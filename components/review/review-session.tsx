@@ -6,7 +6,7 @@ import { motion } from "motion/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Spinner } from "@/components/ui/spinner";
+import { AsciiSpinner } from "@/components/ascii-spinner";
 import { Kbd } from "@/components/ui/kbd";
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription, EmptyContent } from "@/components/ui/empty";
 import { createClient } from "@/lib/supabase/client";
@@ -111,7 +111,7 @@ export function ReviewSession() {
   if (loading) {
     return (
       <div className="flex min-h-[70vh] items-center justify-center">
-        <Spinner className="size-6" />
+        <AsciiSpinner label="Loading deck…" className="text-base text-muted-foreground" />
       </div>
     );
   }

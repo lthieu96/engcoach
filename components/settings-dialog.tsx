@@ -45,6 +45,15 @@ import {
   type TaskLength,
 } from "@/lib/profile";
 import { createClient } from "@/lib/supabase/client";
+import {
+  getTtsPrefs,
+  setTtsPrefs,
+  getEnglishVoices,
+  cancelSpeech,
+  RATES,
+  KOKORO_VOICES,
+  type TtsEngine,
+} from "@/lib/tts";
 import { cn } from "@/lib/utils";
 
 export function SettingsDialog() {
@@ -59,6 +68,12 @@ export function SettingsDialog() {
   const [length, setLength] = useState<TaskLength>(DEFAULT_LENGTH);
   const [autoTask, setAutoTask] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [engine, setEngine] = useState<TtsEngine>("kokoro");
+  const [voiceURI, setVoiceURI] = useState("");
+  const [kokoroVoice, setKokoroVoice] = useState("af_heart");
+  const [rate, setRate] = useState(1);
+  const [previewing, setPreviewing] = useState(false);
 
   const p = preset(cfg.provider);
   const suggestions = models.length ? models : (p?.models ?? []);
@@ -72,6 +87,13 @@ export function SettingsDialog() {
     setModels([]);
     setShowKey(false);
     setOpen(true);
+    // Voice prefs are per-device (voice lists differ per browser/OS).
+    const tts = getTtsPrefs();
+    setEngine(tts.engine);
+    setVoiceURI(tts.voiceURI ?? "");
+    setKokoroVoice(tts.kokoroVoice);
+    setRate(tts.rate);
+    getEnglishVoices().then(setVoices);
     // Learner settings live in profiles.settings (sync across devices).
     createClient()
       .from("profiles")
@@ -127,9 +149,36 @@ export function SettingsDialog() {
     }
   }
 
+  async function previewVoice() {
+    const SAMPLE = "Quick heads-up — the deploy hit an issue, we're rolling back now.";
+    cancelSpeech();
+    if (engine === "kokoro") {
+      setPreviewing(true);
+      const k = await import("@/lib/kokoro");
+      if (!k.kokoroIfReady()) toast.info("Downloading the voice model (~90 MB, one time)…");
+      k.enqueueKokoro({
+        text: SAMPLE,
+        voice: kokoroVoice,
+        speed: rate,
+        onstart: () => setPreviewing(false),
+        onend: () => setPreviewing(false),
+      });
+      return;
+    }
+    const u = new SpeechSynthesisUtterance(SAMPLE);
+    u.rate = rate;
+    const v = voices.find((x) => x.voiceURI === voiceURI);
+    if (v) {
+      u.voice = v;
+      u.lang = v.lang;
+    } else u.lang = "en-US";
+    speechSynthesis.speak(u);
+  }
+
   async function save() {
     setSaving(true);
     setLlm(cfg);
+    setTtsPrefs({ engine, voiceURI: voiceURI || undefined, kokoroVoice, rate });
     // Merge level into profiles.settings (read-modify-write; single-user edit).
     const supabase = createClient();
     const { data } = await supabase.from("profiles").select("id, settings").single();
@@ -209,6 +258,77 @@ export function SettingsDialog() {
             </span>
             <Switch checked={autoTask} onCheckedChange={setAutoTask} />
           </label>
+
+          {/* Voice — per-device (engines and voice lists vary per browser/OS) */}
+          <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Voice
+            <button
+              type="button"
+              onClick={previewVoice}
+              disabled={previewing}
+              className="flex items-center gap-1 text-xs font-normal normal-case tracking-normal hover:text-foreground disabled:opacity-50"
+            >
+              {previewing ? "Generating…" : "Preview"}
+            </button>
+          </div>
+          <label className="block text-sm">
+            Engine
+            <NativeSelect
+              value={engine}
+              onChange={(e) => setEngine(e.target.value as TtsEngine)}
+              className="mt-1 w-full"
+            >
+              <NativeSelectOption value="kokoro">
+                Neural — Kokoro, in-browser (~90 MB one-time download)
+              </NativeSelectOption>
+              <NativeSelectOption value="system">System — built-in voices</NativeSelectOption>
+            </NativeSelect>
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block text-sm">
+              Voice
+              {engine === "kokoro" ? (
+                <NativeSelect
+                  value={kokoroVoice}
+                  onChange={(e) => setKokoroVoice(e.target.value)}
+                  className="mt-1 w-full"
+                >
+                  {KOKORO_VOICES.map((v) => (
+                    <NativeSelectOption key={v.id} value={v.id}>
+                      {v.label}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              ) : (
+                <NativeSelect
+                  value={voiceURI}
+                  onChange={(e) => setVoiceURI(e.target.value)}
+                  className="mt-1 w-full"
+                >
+                  <NativeSelectOption value="">Auto — best available</NativeSelectOption>
+                  {voices.map((v) => (
+                    <NativeSelectOption key={v.voiceURI} value={v.voiceURI}>
+                      {v.name} ({v.lang})
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              )}
+            </label>
+            <label className="block text-sm">
+              Speed
+              <NativeSelect
+                value={String(rate)}
+                onChange={(e) => setRate(Number(e.target.value))}
+                className="mt-1 w-full"
+              >
+                {RATES.map((r) => (
+                  <NativeSelectOption key={r.value} value={String(r.value)}>
+                    {r.label}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </label>
+          </div>
 
           <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             AI provider

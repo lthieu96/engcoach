@@ -10,7 +10,6 @@ import {
   Eye,
   EyeOff,
   Plus,
-  Loading02 as Loader2,
   AlertTriangle as TriangleAlert,
   Users01 as Users,
   AlertCircle as Bug,
@@ -23,6 +22,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Kbd } from "@/components/ui/kbd";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
+import { AsciiSpinner } from "@/components/ascii-spinner";
+import { speakText, cancelSpeech } from "@/lib/tts";
 import { Message, MessageContent } from "@/components/ui/message";
 import { SCENARIOS, type Scenario } from "@/lib/scenarios";
 import { getLlm, isLlmConfigured } from "@/lib/providers";
@@ -68,20 +69,19 @@ export function VoiceChat() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages, transcript]);
 
-  // ---- TTS: queue utterances as sentences arrive; idle when the last one ends.
+  // ---- TTS: queue chunks as sentences arrive; idle when the last one ends.
   const pendingTts = useRef(0);
   const speakChunk = useCallback((text: string) => {
     const t = text.trim();
-    if (!t || typeof window === "undefined" || !window.speechSynthesis) return;
-    const u = new SpeechSynthesisUtterance(t);
-    u.lang = "en-US";
+    if (!t) return;
     pendingTts.current++;
     setPhase("speaking");
-    u.onend = u.onerror = () => {
-      pendingTts.current = Math.max(0, pendingTts.current - 1);
-      if (pendingTts.current === 0) setPhase((p) => (p === "speaking" ? "idle" : p));
-    };
-    window.speechSynthesis.speak(u); // speechSynthesis queues natively
+    void speakText(t, {
+      onend: () => {
+        pendingTts.current = Math.max(0, pendingTts.current - 1);
+        if (pendingTts.current === 0) setPhase((p) => (p === "speaking" ? "idle" : p));
+      },
+    });
   }, []);
 
   // Send one turn and stream the reply: text renders as it arrives and each
@@ -114,10 +114,12 @@ export function VoiceChat() {
           full += decoder.decode(value, { stream: true });
           const snapshot = full;
           setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: snapshot }]);
-          // Flush complete sentences (., !, ?, or newline) to the TTS queue.
+          // Flush complete sentences (., !, ?, or newline) to the TTS queue —
+          // but only decent-sized ones, so "Hi." or "e.g." don't become their
+          // own choppy utterances (the final flush below picks up the rest).
           const unspoken = full.slice(spoken);
           const cut = unspoken.search(/[^.!?\n]*$/);
-          if (cut > 0) {
+          if (cut >= 20) {
             speakChunk(unspoken.slice(0, cut));
             spoken += cut;
           }
@@ -156,7 +158,7 @@ export function VoiceChat() {
       // Give the recognizer a beat to flush the final transcript.
       setTimeout(() => sendTurn(transcriptRef.current), 250);
     } else {
-      window.speechSynthesis?.cancel(); // barge-in: stop TTS when the user speaks
+      cancelSpeech(); // barge-in: stop TTS when the user speaks
       pendingTts.current = 0;
       resetTranscript();
       setPhase("listening");
@@ -186,7 +188,7 @@ export function VoiceChat() {
   }
 
   async function endSession() {
-    window.speechSynthesis?.cancel();
+    cancelSpeech();
     pendingTts.current = 0;
     if (listening) SpeechRecognition.stopListening();
     if (messages.filter((m) => m.content !== SEED).length === 0) {
@@ -394,7 +396,7 @@ export function VoiceChat() {
       {/* Transcript */}
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto rounded-xl border bg-card p-4 shadow-xs">
         {visible.length === 0 && phase === "thinking" && (
-          <p className="text-sm text-muted-foreground">Connecting…</p>
+          <AsciiSpinner label="Connecting…" className="text-muted-foreground" />
         )}
         {showTranscript ? (
           visible.map((m, i) => (
@@ -456,7 +458,7 @@ export function VoiceChat() {
             className="relative h-16 w-16 rounded-full shadow-lg"
           >
             {phase === "thinking" ? (
-              <Loader2 className="size-6 animate-spin" />
+              <AsciiSpinner className="text-2xl" />
             ) : listening ? (
               <Square className="size-6" />
             ) : (

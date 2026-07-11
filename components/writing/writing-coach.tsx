@@ -14,6 +14,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { createClient } from "@/lib/supabase/client";
 import { getLlm, isLlmConfigured } from "@/lib/providers";
 import { LlmSetupNotice } from "@/components/llm-setup-notice";
+import { AsciiSpinner } from "@/components/ascii-spinner";
 import { CHANNELS, type Channel, type Category } from "@/lib/taxonomy";
 import { AnnotatedView } from "./annotated-view";
 import { InlineDiff } from "./inline-diff";
@@ -304,7 +305,9 @@ export function WritingCoach() {
                 {mode === "translate" ? "Translate this" : "Your task"}
               </div>
               {loadingTask ? (
-                <Skeleton className="h-10 w-80 max-w-full" />
+                <div className="flex h-10 items-center">
+                  <AsciiSpinner label="Generating task…" className="text-muted-foreground" />
+                </div>
               ) : taskError ? (
                 <div className="space-y-1">
                   <p className="font-medium text-destructive">Couldn&apos;t generate a task</p>
@@ -429,7 +432,7 @@ export function WritingCoach() {
       {/* Results */}
       {checking && (
         <div className="space-y-3">
-          <p className="animate-pulse text-sm text-muted-foreground">Analyzing your writing…</p>
+          <AsciiSpinner label="Analyzing your writing…" className="text-muted-foreground" />
           <div className="grid gap-4 md:grid-cols-[1fr_20rem]">
             <Skeleton className="h-64 w-full" />
             <div className="space-y-2">

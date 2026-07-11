@@ -7,23 +7,74 @@ const MODEL_ID = "onnx-community/Kokoro-82M-v1.0-ONNX";
 let loader: Promise<KokoroTTS> | null = null;
 let instance: KokoroTTS | null = null;
 
+// Observable load status so the UI can show "downloading 45% / ready / failed".
+export type KokoroStatus = {
+  state: "idle" | "loading" | "ready" | "error";
+  progress: number; // 0–100 during download
+  error?: string;
+  device?: "webgpu" | "wasm";
+};
+let status: KokoroStatus = { state: "idle", progress: 0 };
+const listeners = new Set<(s: KokoroStatus) => void>();
+
+function setStatus(patch: Partial<KokoroStatus>) {
+  status = { ...status, ...patch };
+  for (const l of listeners) l(status);
+}
+
+export function getKokoroStatus(): KokoroStatus {
+  return status;
+}
+
+export function subscribeKokoro(cb: (s: KokoroStatus) => void): () => void {
+  listeners.add(cb);
+  return () => listeners.delete(cb);
+}
+
 export function loadKokoro(): Promise<KokoroTTS> {
   loader ??= (async () => {
     const webgpu = typeof navigator !== "undefined" && "gpu" in navigator;
-    const tts = await KokoroTTS.from_pretrained(MODEL_ID, {
-      dtype: webgpu ? "fp32" : "q8", // q8 artifacts on webgpu; fp32 is fine there
-      device: webgpu ? "webgpu" : "wasm",
-    });
-    instance = tts;
-    return tts;
+    const device = webgpu ? ("webgpu" as const) : ("wasm" as const);
+    setStatus({ state: "loading", progress: 0, error: undefined, device });
+    try {
+      const tts = await KokoroTTS.from_pretrained(MODEL_ID, {
+        dtype: webgpu ? "fp32" : "q8", // q8 artifacts on webgpu; fp32 is fine there
+        device,
+        // Weighted download progress across the model's files.
+        progress_callback: (p: { status: string; progress?: number }) => {
+          if (p.status === "progress" && typeof p.progress === "number") {
+            setStatus({ progress: Math.round(p.progress) });
+          }
+        },
+      });
+      instance = tts;
+      setStatus({ state: "ready", progress: 100 });
+      return tts;
+    } catch (e) {
+      setStatus({ state: "error", error: e instanceof Error ? e.message : "Failed to load model" });
+      throw e;
+    }
   })();
   return loader;
 }
 
 /** Instance if the model finished loading; kicks off the download otherwise. */
 export function kokoroIfReady(): KokoroTTS | null {
-  void loadKokoro().catch(() => (loader = null)); // allow retry after a failed load
+  void loadKokoro().catch(() => {
+    loader = null; // allow retry after a failed load
+  });
   return instance;
+}
+
+/** Load (if needed) and generate one short clip — proves the model actually works. */
+export async function testKokoro(voice: string): Promise<boolean> {
+  try {
+    const tts = await loadKokoro();
+    const audio = await tts.generate("This is a test.", { voice: voice as "af_heart" });
+    return audio.audio.length > 0;
+  } catch {
+    return false;
+  }
 }
 
 type Job = {

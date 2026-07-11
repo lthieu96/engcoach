@@ -74,6 +74,8 @@ export function SettingsDialog() {
   const [kokoroVoice, setKokoroVoice] = useState("af_heart");
   const [rate, setRate] = useState(1);
   const [previewing, setPreviewing] = useState(false);
+  const [kokoroStatus, setKokoroStatus] = useState<import("@/lib/kokoro").KokoroStatus | null>(null);
+  const [testing, setTesting] = useState(false);
 
   const p = preset(cfg.provider);
   const suggestions = models.length ? models : (p?.models ?? []);
@@ -115,6 +117,34 @@ export function SettingsDialog() {
     return () => window.removeEventListener("open-llm-settings", open);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Reflect Kokoro load status while the dialog is open on the neural engine.
+  // Dynamic import loads the wrapper only (not the 90MB weights) — subscribing
+  // never triggers the download; that stays gated behind Preview/Test.
+  useEffect(() => {
+    if (!open || engine !== "kokoro") return;
+    let unsub = () => {};
+    let alive = true;
+    import("@/lib/kokoro").then((k) => {
+      if (!alive) return;
+      setKokoroStatus(k.getKokoroStatus());
+      unsub = k.subscribeKokoro(setKokoroStatus);
+    });
+    return () => {
+      alive = false;
+      unsub();
+    };
+  }, [open, engine]);
+
+  async function testVoice() {
+    setTesting(true);
+    const k = await import("@/lib/kokoro");
+    if (!k.getKokoroStatus().state.match(/ready|loading/))
+      toast.info("Downloading the voice model (~90 MB, one time)…");
+    const ok = await k.testKokoro(kokoroVoice);
+    setTesting(false);
+    toast[ok ? "success" : "error"](ok ? "Voice model works" : "Voice model failed to run");
+  }
 
   function changeProvider(id: string) {
     setModels([]);
@@ -329,6 +359,44 @@ export function SettingsDialog() {
               </NativeSelect>
             </label>
           </div>
+
+          {/* Kokoro model health: loaded? working? */}
+          {engine === "kokoro" && (
+            <div className="flex items-center justify-between gap-3 rounded-lg border bg-muted/40 px-3 py-2 text-sm">
+              <span className="flex items-center gap-2">
+                <span
+                  className={cn(
+                    "size-2 shrink-0 rounded-full",
+                    kokoroStatus?.state === "ready"
+                      ? "bg-green-500"
+                      : kokoroStatus?.state === "error"
+                        ? "bg-destructive"
+                        : kokoroStatus?.state === "loading"
+                          ? "animate-pulse bg-amber-500"
+                          : "bg-muted-foreground/40"
+                  )}
+                />
+                <span className="text-muted-foreground">
+                  {kokoroStatus?.state === "ready"
+                    ? `Model ready${kokoroStatus.device ? ` · ${kokoroStatus.device}` : ""}`
+                    : kokoroStatus?.state === "loading"
+                      ? `Downloading… ${kokoroStatus.progress}%`
+                      : kokoroStatus?.state === "error"
+                        ? "Model failed to load"
+                        : "Model not downloaded yet"}
+                </span>
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={testVoice}
+                disabled={testing || kokoroStatus?.state === "loading"}
+              >
+                {testing ? "Testing…" : kokoroStatus?.state === "ready" ? "Re-test" : "Test"}
+              </Button>
+            </div>
+          )}
 
           <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             AI provider

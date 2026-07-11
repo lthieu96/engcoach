@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "engcoach",
+  // Custom entry wraps .open-next/worker.js and adds the scheduled() cron handler.
+  "main": "worker.ts",
+  "compatibility_date": "2026-07-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "vars": {
+    // Public Supabase keys — safe to ship. No LLM secrets: users bring their own key.
+    "NEXT_PUBLIC_SUPABASE_URL": "",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY": ""
+  },
+  // Daily ping so Supabase doesn't pause after 7 idle days — handled by
+  // scheduled() in worker.ts.
+  "triggers": { "crons": ["0 3 * * *"] }
+}

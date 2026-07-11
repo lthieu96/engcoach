@@ -1,6 +1,6 @@
-# Single-package repo. The `packages` field is required by pnpm 10.11.x when a
-# workspace file exists at all — older versions error "packages field missing or
-# empty" on a settings-only file (the deploy failure this fixed).
+# Single-package repo. `packages` is kept so any pnpm version treats this as a
+# valid (one-package) config. These native deps are transitive and unused at
+# runtime (no next/image; Kokoro's onnx runs in-browser), so skip their builds.
 packages:
   - .
 ignoredBuiltDependencies:

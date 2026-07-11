@@ -51,20 +51,18 @@ in **Settings → AI provider** (stored in the browser only, sent per-request).
    domain) to Site URL + Redirect URLs.
 4. Optional: `supabase gen types typescript --project-id <ref> > lib/db-types.ts` for typed queries.
 
-### Deploy (Cloudflare Workers)
+### Deploy (Vercel)
 
-```bash
-pnpm cf:deploy
-```
+Import the repo on [Vercel](https://vercel.com) — Next.js is auto-detected, no config.
 
-Fill the Supabase vars in `wrangler.jsonc` (they're public keys). **Check the reported
-bundle size on the first deploy** — free plan caps at 3 MiB gzipped; if over, use Workers
-Paid ($5/mo, 10 MiB) or fall back to Vercel Hobby (no code change). Update Supabase Auth
-URL Configuration with the `*.workers.dev` domain.
+1. Set env vars in the Vercel project: `NEXT_PUBLIC_SUPABASE_URL`,
+   `NEXT_PUBLIC_SUPABASE_ANON_KEY` (LLM keys are per-user, in the browser — none here).
+2. Add the deployed domain to Supabase **Auth → URL Configuration** (Site URL +
+   Redirect URLs) and the Google OAuth redirect URI.
 
-**Cron:** `wrangler.jsonc` has a daily trigger. Wire the worker's `scheduled()` handler to
-fetch `/api/ping` so Supabase doesn't pause after 7 idle days (daily review also keeps it alive).
+**Cron:** `vercel.json` runs a daily Vercel Cron hitting `/api/ping` so Supabase doesn't
+pause after 7 idle days (daily review also keeps it alive).
 
 ## Scripts
 
-`pnpm dev` · `pnpm build` · `pnpm typecheck` · `pnpm test` (anchoring + FSRS) · `pnpm cf:deploy`
+`pnpm dev` · `pnpm build` · `pnpm typecheck` · `pnpm test` (anchoring + FSRS)

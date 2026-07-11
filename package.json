@@ -10,9 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test \"**/__test__/*.test.ts\"",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
-    "cf:build": "opennextjs-cloudflare build",
-    "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
+    "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.11",
@@ -50,7 +48,6 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@opennextjs/cloudflare": "^1.20.1",
     "@tailwindcss/postcss": "^4",
     "@types/diff": "^8.0.0",
     "@types/node": "^20",
@@ -60,7 +57,6 @@
     "postgres": "^3.4.9",
     "tailwindcss": "^4",
     "tsx": "^4.23.0",
-    "typescript": "^5",
-    "wrangler": "^4.110.0"
+    "typescript": "^5"
   }
 }

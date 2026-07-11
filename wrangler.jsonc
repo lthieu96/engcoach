@@ -5,6 +5,10 @@
   "main": "worker.ts",
   "compatibility_date": "2026-07-01",
   "compatibility_flags": ["nodejs_compat"],
+  // Generate .open-next/ (worker.js + assets/) before every `wrangler deploy`.
+  // Makes the deploy self-contained on Cloudflare Workers Builds even if the
+  // dashboard build command doesn't run the OpenNext build itself.
+  "build": { "command": "pnpm exec opennextjs-cloudflare build" },
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"

@@ -18,7 +18,10 @@ export async function createClient() {
               cookieStore.set(name, value, options)
             );
           } catch {
-            // Called from a Server Component — middleware refreshes the session instead.
+            // Server Components can't set cookies. Token refresh happens on the
+            // next Route Handler call (API routes can set cookies) and via the
+            // browser client's automatic refresh — there is no proxy/middleware
+            // (Next 16 proxy is Node-only, unsupported by OpenNext Cloudflare).
           }
         },
       },

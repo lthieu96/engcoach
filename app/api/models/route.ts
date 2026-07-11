@@ -1,9 +1,17 @@
 // POST /api/models — list models the given provider/key supports, so the picker
-// never shows a name that 404s. Gated by middleware (auth required).
+// never shows a name that 404s. Requires auth (it makes outbound fetches to a
+// user-supplied baseURL, so it must not be an open proxy).
 import { NextResponse } from "next/server";
 import { preset, type LlmConfig } from "@/lib/providers";
+import { createClient } from "@/lib/supabase/server";
 
 export async function POST(req: Request) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
   const cfg: Partial<LlmConfig> = await req.json().catch(() => ({}));
   const p = preset(cfg.provider || "google");
 

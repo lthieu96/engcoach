@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { anchor } from "./anchor";
-import type { Correction } from "./schemas";
+import { anchor } from "../anchor";
+import type { Correction } from "../schemas";
 
 const base: Omit<Correction, "original" | "occurrence"> = {
   replacement: "X",

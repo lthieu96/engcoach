@@ -8,7 +8,7 @@ import {
   weekBucket,
   trendByCategory,
   topTags,
-} from "./stats";
+} from "../stats";
 
 test("heatLevel buckets", () => {
   assert.equal(heatLevel(0), 0);

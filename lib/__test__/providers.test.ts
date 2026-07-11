@@ -10,7 +10,7 @@ const store = new Map<string, string>();
   removeItem: (k: string) => void store.delete(k),
 };
 
-import { getLlm, setLlm, getProviderConfig } from "./providers";
+import { getLlm, setLlm, getProviderConfig } from "../providers";
 
 beforeEach(() => store.clear());
 

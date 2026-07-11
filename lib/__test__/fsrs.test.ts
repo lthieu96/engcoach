@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { newCard, review, fromDb, Rating } from "./fsrs";
+import { newCard, review, fromDb, Rating } from "../fsrs";
 
 test("Again keeps the card due very soon (learning step)", () => {
   const now = new Date("2026-01-01T00:00:00Z");

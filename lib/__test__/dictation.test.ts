@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { scoreDictation } from "./dictation";
+import { scoreDictation } from "../dictation";
 
 test("perfect transcription (ignoring case/punctuation) = correct", () => {
   const r = scoreDictation("The deploy failed because the migration didn't run.", "the deploy failed because the migration didn't run");

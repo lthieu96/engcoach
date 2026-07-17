@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { toast } from "sonner";
 import {
   Stars01 as Sparkles,
   Edit03 as PenLine,
@@ -8,6 +10,7 @@ import {
 } from "@untitledui/icons";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 const FEATURES = [
   { icon: PenLine, text: "AI writing corrections with spaced-repetition flashcards" },
@@ -16,12 +19,28 @@ const FEATURES = [
 ];
 
 export default function LoginPage() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [signingIn, setSigningIn] = useState(false);
+
   async function signIn() {
     const supabase = createClient();
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: `${location.origin}/auth/callback` },
     });
+  }
+
+  async function signInWithPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setSigningIn(true);
+    const { error } = await createClient().auth.signInWithPassword({ email, password });
+    if (error) {
+      toast.error(error.message);
+      setSigningIn(false);
+      return;
+    }
+    location.href = "/";
   }
 
   return (
@@ -77,6 +96,39 @@ export default function LoginPage() {
           </svg>
           Continue with Google
         </Button>
+
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <div className="h-px flex-1 bg-border" />
+          or
+          <div className="h-px flex-1 bg-border" />
+        </div>
+
+        <form onSubmit={signInWithPassword} className="space-y-2">
+          <Input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="Email"
+            autoComplete="email"
+            required
+          />
+          <Input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Password"
+            autoComplete="current-password"
+            required
+          />
+          <Button
+            type="submit"
+            variant="secondary"
+            className="h-10 w-full"
+            disabled={signingIn || !email || !password}
+          >
+            {signingIn ? "Signing in…" : "Sign in with password"}
+          </Button>
+        </form>
       </div>
     </div>
   );

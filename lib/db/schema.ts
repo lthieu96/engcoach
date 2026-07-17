@@ -12,6 +12,7 @@ import {
   timestamp,
   index,
   check,
+  unique,
 } from "drizzle-orm/pg-core";
 import { authUid, authUsers } from "drizzle-orm/supabase";
 
@@ -105,7 +106,7 @@ export const cards = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    check("cards_source_check", sql`${t.source} in ('correction','manual','chat')`),
+    check("cards_source_check", sql`${t.source} in ('correction','manual','chat','interview')`),
     index("cards_user_due_idx").on(t.userId, t.due),
     pgPolicy("cards_owner", owner(t.userId)),
   ]
@@ -127,6 +128,56 @@ export const reviewLogs = pgTable(
   (t) => [
     index("review_logs_reviewed_idx").on(t.reviewedAt),
     pgPolicy("review_logs_owner", owner(t.userId)),
+  ]
+).enableRLS();
+
+// Mock interviews (docs/04). Turns live in their own table (not a messages jsonb)
+// so a 40-minute session persists turn-by-turn — crash-safe, resumable, and rubric
+// evidence can anchor to a turn idx for replay.
+export const interviews = pgTable(
+  "interviews",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    kind: text().notNull(),
+    question: text().notNull(),
+    config: jsonb().notNull().default({}), // { level, target_minutes, question_source }
+    status: text().notNull().default("active"),
+    evaluation: jsonb(), // InterviewEvaluation (docs/04 §4.1)
+    englishReport: jsonb("english_report"), // SessionReport shape
+    overallScore: integer("overall_score"), // mirror of evaluation.overall for list/trend
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+  },
+  (t) => [
+    check("interviews_kind_check", sql`${t.kind} in ('system_design','dsa_walkthrough')`),
+    check("interviews_status_check", sql`${t.status} in ('active','completed','abandoned')`),
+    index("interviews_user_started_idx").on(t.userId, t.startedAt),
+    pgPolicy("interviews_owner", owner(t.userId)),
+  ]
+).enableRLS();
+
+export const interviewTurns = pgTable(
+  "interview_turns",
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    interviewId: uuid("interview_id")
+      .notNull()
+      .references(() => interviews.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => authUsers.id, { onDelete: "cascade" }),
+    idx: integer().notNull(),
+    role: text().notNull(),
+    content: text().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check("interview_turns_role_check", sql`${t.role} in ('interviewer','candidate')`),
+    unique("interview_turns_order").on(t.interviewId, t.idx),
+    pgPolicy("interview_turns_owner", owner(t.userId)),
   ]
 ).enableRLS();
 

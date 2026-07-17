@@ -1,6 +1,7 @@
 // Zod schemas for AI SDK generateObject (Spec §2).
 import { z } from "zod";
 import { RULE_TAGS, CHANNELS } from "./taxonomy";
+import { rubricFor, PHASES, type InterviewKind } from "./interview";
 
 // No `category` here: it's derived server-side from rule_tag (TAG_CATEGORY) so the
 // LLM can't return a tag/category pair that disagrees.
@@ -52,10 +53,56 @@ export const Flashcard = z.object({
 });
 export type Flashcard = z.infer<typeof Flashcard>;
 
+// Technical takeaway cards generated from a mock interview (docs/04).
+export const FlashcardBatch = z.object({
+  cards: z.array(Flashcard).min(1).max(6),
+});
+export type FlashcardBatch = z.infer<typeof FlashcardBatch>;
+
 export const DictationBatch = z.object({
   sentences: z.array(z.string()).min(1).max(8),
 });
 export type DictationBatch = z.infer<typeof DictationBatch>;
+
+export const InterviewQuestion = z.object({
+  question: z
+    .string()
+    .describe("the full interview question as the interviewer would state it, under 80 words"),
+});
+export type InterviewQuestion = z.infer<typeof InterviewQuestion>;
+
+// Rubric dimensions differ per kind (and DSA gains a coding axis when the
+// candidate pasted code), so the schema is built per interview (docs/04 §4.1).
+export function interviewEvaluationSchema(kind: InterviewKind, hasCode = false) {
+  const dimensions = rubricFor(kind, hasCode).map((d) => d.id);
+  return z.object({
+    rubric: z.array(
+      z.object({
+        dimension: z.enum(dimensions as [string, ...string[]]),
+        score: z.number().int().min(1).max(4),
+        feedback: z.string().describe("2-3 specific sentences on this dimension"),
+        evidence: z
+          .array(
+            z.object({
+              turn_idx: z.number().int().describe("idx of the transcript turn quoted"),
+              quote: z.string().describe("exact substring copied verbatim from that turn"),
+            })
+          )
+          .max(3),
+      })
+    ),
+    overall: z.number().int().min(1).max(4).describe("1=Strong No Hire … 4=Hire"),
+    summary: z.string().describe("2-3 sentences, start with what went well"),
+    action_items: z.array(z.string()).max(3).describe("concrete, doable next steps"),
+    phases: z.array(
+      z.object({
+        phase: z.enum(PHASES[kind] as [string, ...string[]]),
+        from_idx: z.number().int(),
+        to_idx: z.number().int(),
+      })
+    ),
+  });
+}
 
 export const SessionReport = z.object({
   corrections: z.array(Correction),

@@ -7,5 +7,6 @@ export const LlmBody = z
     model: z.string().optional(),
     apiKey: z.string().optional(),
     baseURL: z.string().optional(),
+    effort: z.enum(["default", "low", "medium", "high"]).optional(),
   })
   .optional();

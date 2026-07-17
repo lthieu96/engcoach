@@ -12,10 +12,10 @@ export const maxDuration = 30;
 
 type Body = {
   correctionId?: string;
-  // Direct card (from a chat report or manual add) — no correction row involved.
+  // Direct card (from a chat/interview report or manual add) — no correction row involved.
   front?: string;
   back?: string;
-  source?: "manual" | "chat";
+  source?: "manual" | "chat" | "interview";
   llm?: Partial<LlmConfig>;
 };
 
@@ -39,7 +39,7 @@ export async function POST(req: Request) {
         user_id: user.id,
         front,
         back,
-        source: source === "manual" ? "manual" : "chat",
+        source: source === "manual" || source === "interview" ? source : "chat",
         fsrs: card,
         due: card.due,
       })

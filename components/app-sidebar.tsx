@@ -9,6 +9,7 @@ import {
   LayersTwo01 as Layers,
   Headphones01 as Headphones,
   MessageChatSquare as MessageSquare,
+  Briefcase01 as Briefcase,
   BarChart01 as BarChart3,
   LogOut01 as LogOut,
   Stars01 as Sparkles,
@@ -43,11 +44,24 @@ import { createClient } from "@/lib/supabase/client";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 
-const PRACTICE: { href: string; label: string; icon: typeof PenLine; badge?: boolean }[] = [
-  { href: "/write", label: "Write", icon: PenLine },
-  { href: "/review", label: "Review", icon: Layers, badge: true },
-  { href: "/listen", label: "Listen", icon: Headphones },
-  { href: "/chat", label: "Speak", icon: MessageSquare },
+// Two separate modules: English coaching (practice → flashcards → stats) and
+// mock interviews (its own history + score trends live under /interviews).
+type NavItem = { href: string; label: string; icon: typeof PenLine; badge?: boolean };
+const GROUPS: { label: string; items: NavItem[] }[] = [
+  {
+    label: "English",
+    items: [
+      { href: "/write", label: "Write", icon: PenLine },
+      { href: "/listen", label: "Listen", icon: Headphones },
+      { href: "/chat", label: "Speak", icon: MessageSquare },
+      { href: "/review", label: "Review", icon: Layers, badge: true },
+      { href: "/progress", label: "Progress", icon: BarChart3 },
+    ],
+  },
+  {
+    label: "Mock Interview",
+    items: [{ href: "/interviews", label: "Interviews", icon: Briefcase }],
+  },
 ];
 
 export function AppSidebar({ dueCount, email }: { dueCount: number; email: string }) {
@@ -61,7 +75,8 @@ export function AppSidebar({ dueCount, email }: { dueCount: number; email: strin
   }
 
   // Deletes all learning data. Cascades cover the rest: documents → corrections,
-  // cards → review_logs. RLS restricts every delete to the signed-in user.
+  // cards → review_logs, interviews → interview_turns. RLS restricts every delete
+  // to the signed-in user.
   async function clearData() {
     setClearing(true);
     const supabase = createClient();
@@ -69,6 +84,7 @@ export function AppSidebar({ dueCount, email }: { dueCount: number; email: strin
       supabase.from("documents").delete().gte("created_at", "1970-01-01"),
       supabase.from("cards").delete().gte("created_at", "1970-01-01"),
       supabase.from("chat_sessions").delete().gte("created_at", "1970-01-01"),
+      supabase.from("interviews").delete().gte("started_at", "1970-01-01"),
     ]);
     setClearing(false);
     const failed = results.find((r) => r.error);
@@ -93,39 +109,31 @@ export function AppSidebar({ dueCount, email }: { dueCount: number; email: strin
         </div>
       </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Practice</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {PRACTICE.map(({ href, label, icon: Icon, badge }) => (
-                <SidebarMenuItem key={href}>
-                  <SidebarMenuButton isActive={pathname === href} render={<Link href={href} />}>
-                    <Icon />
-                    <span>{label}</span>
-                  </SidebarMenuButton>
-                  {badge && dueCount > 0 && (
-                    <SidebarMenuBadge className="rounded-full border bg-background tabular-nums shadow-xs">
-                      {dueCount}
-                    </SidebarMenuBadge>
-                  )}
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-        <SidebarGroup>
-          <SidebarGroupLabel>Insights</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton isActive={pathname === "/progress"} render={<Link href="/progress" />}>
-                  <BarChart3 />
-                  <span>Progress</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {GROUPS.map((group) => (
+          <SidebarGroup key={group.label}>
+            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {group.items.map(({ href, label, icon: Icon, badge }) => (
+                  <SidebarMenuItem key={href}>
+                    <SidebarMenuButton
+                      isActive={pathname === href || pathname.startsWith(`${href}/`)}
+                      render={<Link href={href} />}
+                    >
+                      <Icon />
+                      <span>{label}</span>
+                    </SidebarMenuButton>
+                    {badge && dueCount > 0 && (
+                      <SidebarMenuBadge className="rounded-full border bg-background tabular-nums shadow-xs">
+                        {dueCount}
+                      </SidebarMenuBadge>
+                    )}
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
       <SidebarFooter>
         <SidebarMenu>
@@ -146,7 +154,7 @@ export function AppSidebar({ dueCount, email }: { dueCount: number; email: strin
                   <AlertDialogTitle>Clear all learning data?</AlertDialogTitle>
                   <AlertDialogDescription>
                     This permanently deletes your documents, corrections, flashcards, review
-                    history and chat sessions. Your account and settings stay.
+                    history, chat sessions and interviews. Your account and settings stay.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>

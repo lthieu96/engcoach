@@ -1,5 +1,7 @@
 // LLM provider presets + local (localStorage) config. Pure data — safe on client.
-// Config is NEVER stored in the DB; the browser sends it per-request.
+// The browser sends the config per-request. By default it never leaves this
+// browser; with Settings → "Sync to account" it is ALSO stored on the profile
+// row, encrypted server-side (/api/llm-config + lib/crypto.ts).
 
 export type ProviderKind = "google" | "compatible";
 
@@ -88,17 +90,29 @@ export function preset(id: string): Preset | undefined {
   return PROVIDERS.find((p) => p.id === id);
 }
 
+// Thinking/reasoning effort. "default" = don't send anything (model decides).
+export const EFFORTS = ["default", "low", "medium", "high"] as const;
+export type Effort = (typeof EFFORTS)[number];
+
+export const EFFORT_LABEL: Record<Effort, string> = {
+  default: "Default — model decides",
+  low: "Low — fast, cheap",
+  medium: "Medium",
+  high: "High — deepest reasoning",
+};
+
 export type LlmConfig = {
   provider: string;
   model: string;
   apiKey?: string;
   baseURL?: string; // override the preset's base
+  effort?: Effort;
 };
 
 const KEY = "engcoach:llm";
 
 // Per-provider store so switching providers never drops a key you already entered.
-type Saved = { model?: string; apiKey?: string; baseURL?: string };
+type Saved = { model?: string; apiKey?: string; baseURL?: string; effort?: Effort };
 type Store = { current: string; byProvider: Record<string, Saved> };
 
 function readStore(): Store {
@@ -125,6 +139,7 @@ export function getProviderConfig(provider: string): LlmConfig {
     model: saved.model ?? "",
     apiKey: saved.apiKey ?? "",
     baseURL: saved.baseURL ?? preset(provider)?.baseURL ?? "",
+    effort: saved.effort ?? "default",
   };
 }
 
@@ -135,11 +150,40 @@ export function getLlm(): LlmConfig {
 
 export function setLlm(cfg: LlmConfig) {
   const s = readStore();
-  s.byProvider[cfg.provider] = { model: cfg.model, apiKey: cfg.apiKey, baseURL: cfg.baseURL };
+  s.byProvider[cfg.provider] = {
+    model: cfg.model,
+    apiKey: cfg.apiKey,
+    baseURL: cfg.baseURL,
+    effort: cfg.effort,
+  };
   s.current = cfg.provider;
   localStorage.setItem(KEY, JSON.stringify(s));
   // Pages gated on isLlmConfigured() listen for this to unblock immediately.
   if (typeof window !== "undefined") window.dispatchEvent(new Event("llm-config-changed"));
+}
+
+// ---- Cross-device sync (opt-in, encrypted server-side) -------------------------
+
+const SYNC_KEY = "engcoach:llm-sync";
+
+export function getLlmSync(): boolean {
+  return typeof localStorage !== "undefined" && localStorage.getItem(SYNC_KEY) === "1";
+}
+
+export function setLlmSync(on: boolean) {
+  localStorage.setItem(SYNC_KEY, on ? "1" : "0");
+}
+
+/** The full per-provider store, for pushing to /api/llm-config. */
+export function exportLlmStore(): Store {
+  return readStore();
+}
+
+/** Replace the local store with a synced one (fresh device restore). */
+export function importLlmStore(s: Store) {
+  if (!s?.byProvider) return;
+  localStorage.setItem(KEY, JSON.stringify(s));
+  window.dispatchEvent(new Event("llm-config-changed"));
 }
 
 /** True when the active config can actually make a request (key + endpoint). */

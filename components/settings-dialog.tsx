@@ -30,9 +30,25 @@ import {
 } from "@/components/ui/command";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { SidebarMenuButton } from "@/components/ui/sidebar";
-import { PROVIDERS, preset, getLlm, getProviderConfig, setLlm, type LlmConfig } from "@/lib/providers";
+import {
+  PROVIDERS,
+  EFFORTS,
+  EFFORT_LABEL,
+  preset,
+  getLlm,
+  getProviderConfig,
+  setLlm,
+  getLlmSync,
+  setLlmSync,
+  exportLlmStore,
+  importLlmStore,
+  isLlmConfigured,
+  type Effort,
+  type LlmConfig,
+} from "@/lib/providers";
 import { Switch } from "@/components/ui/switch";
 import {
   LEVELS,
@@ -56,8 +72,11 @@ import {
 } from "@/lib/tts";
 import { cn } from "@/lib/utils";
 
+type SettingsTab = "learning" | "voice" | "provider";
+
 export function SettingsDialog() {
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<SettingsTab>("learning");
   const [cfg, setCfg] = useState<LlmConfig>({ provider: "google", model: "" });
   const [models, setModels] = useState<string[]>([]);
   const [fetching, setFetching] = useState(false);
@@ -76,6 +95,7 @@ export function SettingsDialog() {
   const [previewing, setPreviewing] = useState(false);
   const [kokoroStatus, setKokoroStatus] = useState<import("@/lib/kokoro").KokoroStatus | null>(null);
   const [testing, setTesting] = useState(false);
+  const [sync, setSync] = useState(false);
 
   const p = preset(cfg.provider);
   const suggestions = models.length ? models : (p?.models ?? []);
@@ -84,10 +104,12 @@ export function SettingsDialog() {
   const custom = search.trim();
   const showCustom = !!custom && !suggestions.some((m) => m.toLowerCase() === q);
 
-  function openDialog() {
+  function openDialog(initialTab: SettingsTab = "learning") {
     setCfg(getProviderConfig(getLlm().provider));
     setModels([]);
     setShowKey(false);
+    setSync(getLlmSync());
+    setTab(initialTab);
     setOpen(true);
     // Voice prefs are per-device (voice lists differ per browser/OS).
     const tts = getTtsPrefs();
@@ -110,9 +132,25 @@ export function SettingsDialog() {
       });
   }
 
-  // "Configure provider" buttons elsewhere (LlmSetupNotice) open this dialog.
+  // Fresh device: if nothing is configured locally, restore the synced
+  // (encrypted) provider config from the account. Silent no-op otherwise.
   useEffect(() => {
-    const open = () => openDialog();
+    if (isLlmConfigured()) return;
+    fetch("/api/llm-config")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.store?.byProvider) {
+          importLlmStore(d.store);
+          setLlmSync(true);
+          toast.success("Provider settings restored from your account");
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // "Configure provider" buttons elsewhere (LlmSetupNotice) open straight to the AI tab.
+  useEffect(() => {
+    const open = () => openDialog("provider");
     window.addEventListener("open-llm-settings", open);
     return () => window.removeEventListener("open-llm-settings", open);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -209,6 +247,21 @@ export function SettingsDialog() {
     setSaving(true);
     setLlm(cfg);
     setTtsPrefs({ engine, voiceURI: voiceURI || undefined, kokoroVoice, rate });
+    // Sync (or un-sync) the encrypted provider store on the account.
+    if (sync) {
+      const res = await fetch("/api/llm-config", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ store: exportLlmStore() }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        toast.error((d as { error?: string }).error ?? "Couldn't sync provider settings");
+      }
+    } else if (getLlmSync()) {
+      await fetch("/api/llm-config", { method: "DELETE" }).catch(() => {});
+    }
+    setLlmSync(sync);
     // Merge level into profiles.settings (read-modify-write; single-user edit).
     const supabase = createClient();
     const { data } = await supabase.from("profiles").select("id, settings").single();
@@ -228,7 +281,7 @@ export function SettingsDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<SidebarMenuButton onClick={openDialog} />}>
+      <DialogTrigger render={<SidebarMenuButton onClick={() => openDialog()} />}>
         <Settings2 />
         <span>Settings</span>
       </DialogTrigger>
@@ -240,15 +293,25 @@ export function SettingsDialog() {
             </span>
             Settings
           </DialogTitle>
-          <DialogDescription>
-            The API key stays in this browser only — never sent to our database. It is used per
-            request.
-          </DialogDescription>
+          <DialogDescription>Learning, voice and AI provider preferences.</DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <Tabs value={tab} onValueChange={(v) => setTab(v as SettingsTab)}>
+          <TabsList className="w-full">
+            <TabsTrigger value="learning" className="flex-1">
+              Learning
+            </TabsTrigger>
+            <TabsTrigger value="voice" className="flex-1">
+              Voice
+            </TabsTrigger>
+            <TabsTrigger value="provider" className="flex-1">
+              AI Provider
+            </TabsTrigger>
+          </TabsList>
+
           {/* Learner settings — drive task, dictation and chat difficulty */}
-          <div className="grid grid-cols-2 gap-3">
+          <TabsContent value="learning" className="min-h-[300px] space-y-4 pt-4">
+            <div className="grid grid-cols-2 gap-3">
             <label className="block text-sm">
               English level
               <NativeSelect
@@ -288,17 +351,18 @@ export function SettingsDialog() {
             </span>
             <Switch checked={autoTask} onCheckedChange={setAutoTask} />
           </label>
+          </TabsContent>
 
           {/* Voice — per-device (engines and voice lists vary per browser/OS) */}
-          <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Voice
+          <TabsContent value="voice" className="min-h-[300px] space-y-4 pt-4">
+          <div className="flex items-center justify-end">
             <button
               type="button"
               onClick={previewVoice}
               disabled={previewing}
-              className="flex items-center gap-1 text-xs font-normal normal-case tracking-normal hover:text-foreground disabled:opacity-50"
+              className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
             >
-              {previewing ? "Generating…" : "Preview"}
+              {previewing ? "Generating…" : "▶ Preview voice"}
             </button>
           </div>
           <label className="block text-sm">
@@ -398,9 +462,20 @@ export function SettingsDialog() {
             </div>
           )}
 
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            AI provider
-          </div>
+          </TabsContent>
+
+          <TabsContent value="provider" className="min-h-[300px] space-y-4 pt-4">
+          <label className="flex items-center justify-between gap-3 rounded-lg border bg-muted/40 px-3 py-2 text-sm">
+            <span>
+              Sync to account
+              <span className="block text-xs text-muted-foreground">
+                {sync
+                  ? "Keys are stored encrypted (AES-256-GCM) in your account and follow you across devices."
+                  : "Keys stay in this browser only — never sent to our database."}
+              </span>
+            </span>
+            <Switch checked={sync} onCheckedChange={setSync} />
+          </label>
           {/* Provider grid */}
           <div className="grid grid-cols-2 gap-2">
             {PROVIDERS.map((pr) => {
@@ -538,8 +613,28 @@ export function SettingsDialog() {
             )}
           </div>
 
+          <label className="block text-sm">
+            Thinking effort
+            <NativeSelect
+              value={cfg.effort ?? "default"}
+              onChange={(e) => setCfg({ ...cfg, effort: e.target.value as Effort })}
+              className="mt-1 w-full"
+            >
+              {EFFORTS.map((ef) => (
+                <NativeSelectOption key={ef} value={ef}>
+                  {EFFORT_LABEL[ef]}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+            <span className="mt-1 block text-xs text-muted-foreground">
+              How much the model reasons before answering. Higher = better grading quality,
+              slower and pricier. Ignored by models without thinking support.
+            </span>
+          </label>
+
           {p?.note && <p className="text-xs text-muted-foreground">{p.note}</p>}
-        </div>
+          </TabsContent>
+        </Tabs>
 
         <DialogFooter>
           <Button onClick={save} disabled={saving}>

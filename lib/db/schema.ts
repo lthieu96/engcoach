@@ -31,6 +31,8 @@ export const profiles = pgTable(
     settings: jsonb()
       .notNull()
       .default({ theme: "system", llm_provider: "google", daily_limit: 1500 }),
+    // Opt-in synced provider config (API keys) — AES-256-GCM blob, see lib/crypto.ts.
+    llmConfig: text("llm_config"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [pgPolicy("profiles_owner", owner(t.id))]

@@ -3,13 +3,31 @@
 // companies use (docs/04 §1.4) — descriptors are injected into the evaluator
 // prompt so a mid-tier model still grades against concrete bars.
 
-export const INTERVIEW_KINDS = ["system_design", "dsa_walkthrough"] as const;
+export const INTERVIEW_KINDS = ["system_design", "dsa_walkthrough", "tech_deep_dive"] as const;
 export type InterviewKind = (typeof INTERVIEW_KINDS)[number];
 
 export const KIND_LABEL: Record<InterviewKind, string> = {
   system_design: "System Design",
   dsa_walkthrough: "DSA Walkthrough",
+  tech_deep_dive: "Tech Deep Dive",
 };
+
+// Starting points for a tech deep dive — the topic field is free text, these are
+// only chips so the dialog isn't a blank box.
+export const TOPIC_SUGGESTIONS = [
+  "Node.js event loop",
+  "NestJS dependency injection",
+  "Next.js caching & rendering",
+  "React re-render performance",
+  "PostgreSQL indexing",
+  "Database transactions & isolation",
+  "REST vs. gRPC vs. GraphQL",
+  "Message queues & idempotency",
+  "Docker & container networking",
+  "Auth: sessions, JWT, OAuth",
+  "TypeScript type system",
+  "Testing strategy",
+];
 
 export const SENIORITY = ["mid", "senior", "staff"] as const;
 export type Seniority = (typeof SENIORITY)[number];
@@ -47,6 +65,7 @@ export type InterviewConfig = {
   target_minutes: number;
   question_source: "generated" | "user";
   company?: CompanyStyle;
+  topic?: string; // tech_deep_dive: what the question is about (free text)
   code?: string; // DSA: solution code, pasted at setup or submitted mid-session
   focus?: string[]; // dimensions weak in recent interviews — interviewer probes these harder
 };
@@ -148,6 +167,52 @@ const DSA_RUBRIC: Dimension[] = [
   },
 ];
 
+// Tech deep dive: "do you actually understand the thing you use every day?"
+// Graded on mechanism over vocabulary — naming a concept is a 2, explaining how
+// it works is a 3.
+const TECH_RUBRIC: Dimension[] = [
+  {
+    id: "fundamentals",
+    label: "Fundamentals",
+    descriptors: {
+      1: "Core concepts are wrong or missing.",
+      2: "Knows the vocabulary but not what it means; explanation is a definition, not an understanding.",
+      3: "Explains the core model correctly and uses it to answer follow-ups.",
+      4: "Precise mental model, including the parts most engineers get wrong.",
+    },
+  },
+  {
+    id: "depth",
+    label: "Depth",
+    descriptors: {
+      1: "Could not go past the first sentence of the answer.",
+      2: "One level deep; 'how does that work?' ends the answer.",
+      3: "Explains the mechanism underneath — what the runtime/database/framework actually does.",
+      4: "Goes several levels down unprompted and knows where their knowledge ends.",
+    },
+  },
+  {
+    id: "trade_offs",
+    label: "Trade-offs",
+    descriptors: {
+      1: "Presented choices as the only option; no alternatives considered.",
+      2: "Named trade-offs only when directly asked.",
+      3: "Volunteered at least two real trade-offs with the rejected alternative and the reason.",
+      4: "Every significant choice came with alternatives, costs, and a justified decision.",
+    },
+  },
+  {
+    id: "practical_experience",
+    label: "Practical experience",
+    descriptors: {
+      1: "Purely theoretical; no sign of having used this.",
+      2: "Textbook answers with no concrete situation behind them.",
+      3: "Backs claims with a real situation: what broke, what they changed, what happened.",
+      4: "Concrete war stories with measurements, and clear lessons drawn from them.",
+    },
+  },
+];
+
 // Graded only when the candidate pasted their solution code (4th DSA axis, docs/04 §1.4).
 const CODING_DIMENSION: Dimension = {
   id: "coding",
@@ -163,6 +228,7 @@ const CODING_DIMENSION: Dimension = {
 export const RUBRICS: Record<InterviewKind, Dimension[]> = {
   system_design: SYSTEM_DESIGN_RUBRIC,
   dsa_walkthrough: DSA_RUBRIC,
+  tech_deep_dive: TECH_RUBRIC,
 };
 
 /** Dimensions actually graded for one interview. */
@@ -171,12 +237,16 @@ export function rubricFor(kind: InterviewKind, hasCode = false): Dimension[] {
 }
 
 export const DIMENSION_LABEL: Record<string, string> = Object.fromEntries(
-  [...SYSTEM_DESIGN_RUBRIC, ...DSA_RUBRIC, CODING_DIMENSION].map((d) => [d.id, d.label])
+  [...SYSTEM_DESIGN_RUBRIC, ...DSA_RUBRIC, ...TECH_RUBRIC, CODING_DIMENSION].map((d) => [
+    d.id,
+    d.label,
+  ])
 );
 
 export const PHASES: Record<InterviewKind, string[]> = {
   system_design: ["requirements", "api_and_entities", "high_level_design", "deep_dives", "wrap_up"],
   dsa_walkthrough: ["problem_understanding", "approach", "complexity", "edge_cases", "wrap_up"],
+  tech_deep_dive: ["warm_up", "mechanism", "trade_offs", "real_world", "wrap_up"],
 };
 
 /** Rubric rendered for the evaluator prompt: dimension ids + per-score bars. */

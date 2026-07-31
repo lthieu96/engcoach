@@ -1,7 +1,7 @@
 // POST /api/report — end-of-session report (Spec §3.4) + persist the chat session.
 import { generateObject } from "ai";
 import { NextResponse } from "next/server";
-import { resolveModel, llmError } from "@/lib/llm";
+import { resolveModel, llmError, GRADING } from "@/lib/llm";
 import { SessionReport } from "@/lib/schemas";
 import { sessionReportSystem } from "@/lib/prompts";
 import { getLevel } from "@/lib/profile";
@@ -31,6 +31,7 @@ export async function POST(req: Request) {
   let object;
   try {
     ({ object } = await generateObject({
+      ...GRADING,
       model: resolveModel(llm),
       schema: SessionReport,
       system: sessionReportSystem(await getLevel(supabase, user.id)),

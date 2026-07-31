@@ -2,7 +2,7 @@
 import { generateObject } from "ai";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { resolveModel, llmError } from "@/lib/llm";
+import { resolveModel, llmError, GRADING } from "@/lib/llm";
 import { CorrectionResult, TranslateResult } from "@/lib/schemas";
 import { correctionSystem, translateGradeSystem } from "@/lib/prompts";
 import { getLevel } from "@/lib/profile";
@@ -41,6 +41,7 @@ export async function POST(req: Request) {
   let object;
   try {
     ({ object } = await generateObject({
+      ...GRADING,
       model: resolveModel(llm),
       schema: isTranslate ? TranslateResult : CorrectionResult,
       system: isTranslate ? translateGradeSystem(level) : correctionSystem(channel, level),
@@ -107,6 +108,7 @@ export async function POST(req: Request) {
     corrections: saved,
     natural_rewrite: object.natural_rewrite,
     overall_comment: object.overall_comment,
+    vocabulary: object.vocabulary,
     ...("meaning_score" in object && "alternatives" in object
       ? { meaning_score: object.meaning_score, alternatives: object.alternatives }
       : {}),

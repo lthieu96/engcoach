@@ -97,8 +97,11 @@ export const cards = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => authUsers.id, { onDelete: "cascade" }),
-    front: text().notNull(),
-    back: text().notNull(),
+    // 'sentence' = cloze of a corrected sentence; 'vocab' = term ⇄ meaning, typed.
+    kind: text().notNull().default("sentence"),
+    front: text().notNull(), // vocab: the English term
+    back: text().notNull(), // vocab: the Vietnamese meaning
+    example: text(), // vocab only: one English example sentence
     source: text().notNull(),
     correctionId: uuid("correction_id").references(() => corrections.id, { onDelete: "set null" }),
     ruleTag: text("rule_tag"),
@@ -109,6 +112,7 @@ export const cards = pgTable(
   },
   (t) => [
     check("cards_source_check", sql`${t.source} in ('correction','manual','chat','interview')`),
+    check("cards_kind_check", sql`${t.kind} in ('sentence','vocab')`),
     index("cards_user_due_idx").on(t.userId, t.due),
     pgPolicy("cards_owner", owner(t.userId)),
   ]
@@ -154,7 +158,10 @@ export const interviews = pgTable(
     endedAt: timestamp("ended_at", { withTimezone: true }),
   },
   (t) => [
-    check("interviews_kind_check", sql`${t.kind} in ('system_design','dsa_walkthrough')`),
+    check(
+      "interviews_kind_check",
+      sql`${t.kind} in ('system_design','dsa_walkthrough','tech_deep_dive')`
+    ),
     check("interviews_status_check", sql`${t.status} in ('active','completed','abandoned')`),
     index("interviews_user_started_idx").on(t.userId, t.startedAt),
     pgPolicy("interviews_owner", owner(t.userId)),

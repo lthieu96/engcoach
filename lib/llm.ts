@@ -50,6 +50,15 @@ export function resolveModel(cfg?: Partial<LlmConfig>) {
     : m;
 }
 
+/**
+ * Settings for every GRADING call (correct, report, interview eval, flashcard).
+ * Grading must be reproducible: re-checking the same draft has to give the same
+ * verdict, otherwise the learner sees a different set of "fixes" each time.
+ * Generation calls (tasks, interviewer turns, dictation) keep default sampling —
+ * they WANT variety.
+ */
+export const GRADING = { temperature: 0 } as const;
+
 /** Turn a provider/SDK error into a short user-facing message. */
 export function llmError(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);

@@ -12,7 +12,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Kbd } from "@/components/ui/kbd";
 import { createClient } from "@/lib/supabase/client";
-import { getLlm, isLlmConfigured } from "@/lib/providers";
+import { isLlmConfigured } from "@/lib/providers";
+import { postLlm } from "@/lib/api";
 import { LlmSetupNotice } from "@/components/llm-setup-notice";
 import { AsciiSpinner } from "@/components/ascii-spinner";
 import { CHANNELS, type Channel, type Category } from "@/lib/taxonomy";
@@ -22,30 +23,19 @@ import { CorrectionCard } from "./correction-card";
 import { toUICorrection, type SavedCorrection, type UICorrection } from "./types";
 
 type Mode = "compose" | "translate" | "paste";
+type Vocab = { term: string; meaning_vi: string; example: string };
 type Result = {
   documentId: string | null;
   corrections: SavedCorrection[];
   natural_rewrite: string;
   overall_comment: string;
+  vocabulary?: Vocab[];
   meaning_score?: number;
   alternatives?: string[];
 };
 type Task = { scenario?: string; goal?: string; constraints?: string[]; channel?: Channel; vietnamese?: string; context?: string };
 
 const FILTERS: (Category | "all")[] = ["all", "grammar", "clarity", "tone"];
-
-// One fetch helper so every route reports real errors (401 ≠ "bad LLM key").
-async function postJson<T>(url: string, body: unknown): Promise<T> {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (res.status === 401) throw new Error("Session expired — please sign in again.");
-  if (!res.ok) throw new Error((data as { error?: string }).error ?? `Request failed (${res.status})`);
-  return data as T;
-}
 
 export function WritingCoach() {
   const [mode, setMode] = useState<Mode>("translate");
@@ -60,6 +50,10 @@ export function WritingCoach() {
   const [checking, setChecking] = useState(false);
   const [loadingTask, setLoadingTask] = useState(false);
   const [addingId, setAddingId] = useState<string | null>(null);
+  // Vocabulary: AI suggestions saved so far, plus whatever the user highlights.
+  const [savedTerms, setSavedTerms] = useState<string[]>([]);
+  const [savingTerm, setSavingTerm] = useState<string | null>(null);
+  const [selection, setSelection] = useState("");
   // null = not yet known (first client render) — avoids a hydration mismatch.
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [taskError, setTaskError] = useState<string | null>(null);
@@ -89,7 +83,7 @@ export function WritingCoach() {
     setLoadingTask(true);
     setTaskError(null);
     try {
-      setTask(await postJson<Task>("/api/task", { mode: m, llm: getLlm() }));
+      setTask(await postLlm<Task>("/api/task", { mode: m }));
     } catch (e) {
       setTaskError(e instanceof Error ? e.message : "Couldn't generate a task.");
     } finally {
@@ -114,15 +108,15 @@ export function WritingCoach() {
     setCorrections([]);
     setCheckError(null);
     try {
-      const data = await postJson<Result>("/api/correct", {
+      const data = await postLlm<Result>("/api/correct", {
         text,
         channel: task?.channel ?? channel,
         mode,
         vietnamese: task?.vietnamese,
         title: task?.scenario ?? task?.context ?? null,
-        llm: getLlm(),
       });
       checkedText.current = text;
+      setSelection("");
       setResult(data);
       setCorrections(data.corrections.map(toUICorrection));
       setView("annotated");
@@ -148,15 +142,33 @@ export function WritingCoach() {
   async function addCard(id: string) {
     setAddingId(id);
     try {
-      const data = await postJson<{ deduped?: boolean }>("/api/card", {
-        correctionId: id,
-        llm: getLlm(),
-      });
+      const data = await postLlm<{ deduped?: boolean }>("/api/card", { correctionId: id });
       toast.success(data.deduped ? "Already had a card for this" : "Flashcard added");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't create the flashcard");
     } finally {
       setAddingId(null);
+    }
+  }
+
+  // Save a word/phrase to the vocabulary deck. `meaning` comes from an AI
+  // suggestion; a highlighted term arrives bare and the server fills it in.
+  async function saveVocab(term: string, meaning?: string, example?: string) {
+    setSavingTerm(term);
+    try {
+      const data = await postLlm<{ deduped?: boolean }>("/api/card", {
+        kind: "vocab",
+        term,
+        meaning,
+        example,
+        context: checkedText.current.slice(0, 400),
+      });
+      setSavedTerms((t) => [...t, term]);
+      toast.success(data.deduped ? `Already in your deck: “${term}”` : `Saved “${term}”`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't save the word");
+    } finally {
+      setSavingTerm(null);
     }
   }
 
@@ -513,6 +525,40 @@ export function WritingCoach() {
             </p>
           )}
 
+          {/* Vocabulary worth keeping — you choose what enters the deck */}
+          {!!result.vocabulary?.length && (
+            <div className="space-y-2.5 rounded-xl border bg-card p-4 shadow-xs">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Worth learning
+              </p>
+              {result.vocabulary.map((v) => {
+                const saved = savedTerms.includes(v.term);
+                return (
+                  <div key={v.term} className="flex items-start justify-between gap-3 text-sm">
+                    <div className="min-w-0">
+                      <p>
+                        <span className="font-medium">{v.term}</span>
+                        <span className="text-muted-foreground"> — {v.meaning_vi}</span>
+                      </p>
+                      {v.example && (
+                        <p className="text-xs italic text-muted-foreground/80">“{v.example}”</p>
+                      )}
+                    </div>
+                    <Button
+                      variant={saved ? "ghost" : "outline"}
+                      size="sm"
+                      className="shrink-0"
+                      disabled={saved || savingTerm === v.term}
+                      onClick={() => saveVocab(v.term, v.meaning_vi, v.example)}
+                    >
+                      {saved ? "Saved" : savingTerm === v.term ? "Saving…" : "Save"}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {/* Round 2 CTA — applying the feedback is where the learning happens */}
           {corrections.some((c) => c.status !== "dismissed") && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-muted/40 px-4 py-3 text-sm">
@@ -535,7 +581,10 @@ export function WritingCoach() {
                   <TabsTrigger value="rewrite">Natural rewrite</TabsTrigger>
                 </TabsList>
               </Tabs>
-              <Card>
+              {/* Highlight anything here to bank it — no popover, just a bar. */}
+              <Card
+                onMouseUp={() => setSelection(window.getSelection()?.toString().trim() ?? "")}
+              >
                 <CardContent className="py-4">
                   {view === "annotated" ? (
                     <AnnotatedView
@@ -549,6 +598,28 @@ export function WritingCoach() {
                   )}
                 </CardContent>
               </Card>
+              {selection && selection.length <= 60 && (
+                <div className="flex items-center justify-between gap-3 rounded-xl border bg-muted/40 px-3 py-2 text-sm">
+                  <span className="min-w-0 truncate">
+                    <span className="text-muted-foreground">Save </span>
+                    <span className="font-medium">“{selection}”</span>
+                    <span className="text-muted-foreground"> to vocabulary</span>
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0"
+                    disabled={savingTerm === selection || savedTerms.includes(selection)}
+                    onClick={() => saveVocab(selection)}
+                  >
+                    {savedTerms.includes(selection)
+                      ? "Saved"
+                      : savingTerm === selection
+                        ? "Saving…"
+                        : "Save"}
+                  </Button>
+                </div>
+              )}
             </div>
 
             {/* Right: correction cards */}

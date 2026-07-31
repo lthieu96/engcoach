@@ -13,10 +13,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { getLlm, isLlmConfigured } from "@/lib/providers";
+import { isLlmConfigured } from "@/lib/providers";
+import { postLlm } from "@/lib/api";
 import { LlmSetupNotice } from "@/components/llm-setup-notice";
 import {
   INTERVIEW_KINDS,
@@ -26,6 +28,7 @@ import {
   DURATIONS,
   COMPANY_STYLES,
   COMPANY_LABEL,
+  TOPIC_SUGGESTIONS,
   type CompanyStyle,
   type InterviewKind,
   type Seniority,
@@ -39,6 +42,7 @@ export function NewInterview() {
   const [minutes, setMinutes] = useState<number>(25);
   const [company, setCompany] = useState<CompanyStyle>("generic");
   const [question, setQuestion] = useState("");
+  const [topic, setTopic] = useState("");
   const [code, setCode] = useState("");
   const [starting, setStarting] = useState(false);
   const [configured, setConfigured] = useState(false);
@@ -48,22 +52,16 @@ export function NewInterview() {
   async function start() {
     setStarting(true);
     try {
-      const res = await fetch("/api/interview", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          kind,
-          level,
-          targetMinutes: minutes,
-          company,
-          question: question.trim() || undefined,
-          code: kind === "dsa_walkthrough" ? code.trim() || undefined : undefined,
-          llm: getLlm(),
-        }),
+      const { id } = await postLlm<{ id: string }>("/api/interview", {
+        kind,
+        level,
+        targetMinutes: minutes,
+        company,
+        question: question.trim() || undefined,
+        topic: kind === "tech_deep_dive" ? topic.trim() || undefined : undefined,
+        code: kind === "dsa_walkthrough" ? code.trim() || undefined : undefined,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Couldn't start the interview");
-      router.push(`/interviews/${data.id}`);
+      router.push(`/interviews/${id}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't start the interview");
       setStarting(false);
@@ -99,6 +97,29 @@ export function NewInterview() {
               ))}
             </ToggleGroup>
           </div>
+          {kind === "tech_deep_dive" && (
+            <div className="space-y-1.5">
+              <Label htmlFor="topic">Topic</Label>
+              <Input
+                id="topic"
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                placeholder="Anything you'd be grilled on — e.g. NestJS dependency injection"
+              />
+              <div className="flex flex-wrap gap-1.5 pt-0.5">
+                {TOPIC_SUGGESTIONS.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setTopic(t)}
+                    className="rounded-full border px-2.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="space-y-1.5">
             <Label>Bar</Label>
             <ToggleGroup
@@ -168,7 +189,14 @@ export function NewInterview() {
               />
             </div>
           )}
-          <Button onClick={start} disabled={starting || !configured}>
+          <Button
+            onClick={start}
+            disabled={
+              starting ||
+              !configured ||
+              (kind === "tech_deep_dive" && !topic.trim() && !question.trim())
+            }
+          >
             {starting ? "Setting up…" : "Start interview"}
           </Button>
         </div>

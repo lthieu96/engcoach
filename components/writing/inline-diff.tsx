@@ -4,6 +4,14 @@ import { diffWords } from "diff";
 
 // Natural-rewrite diff: red strike = removed, green = added (Spec §3.1). ~inline, not side-by-side.
 export function InlineDiff({ original, rewrite }: { original: string; rewrite: string }) {
+  // An unchanged rewrite is the expected outcome for a clean draft — say so
+  // rather than rendering the text twice with nothing highlighted.
+  if (original.trim() === rewrite.trim())
+    return (
+      <p className="text-sm text-muted-foreground">
+        Already natural — a native colleague would send this as it is.
+      </p>
+    );
   const parts = diffWords(original, rewrite);
   return (
     <div className="whitespace-pre-wrap text-[16px] leading-[1.7]">

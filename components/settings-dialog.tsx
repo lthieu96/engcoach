@@ -60,6 +60,7 @@ import {
   type Level,
   type TaskLength,
 } from "@/lib/profile";
+import { post } from "@/lib/api";
 import { createClient } from "@/lib/supabase/client";
 import {
   getTtsPrefs,
@@ -136,16 +137,15 @@ export function SettingsDialog() {
   // (encrypted) provider config from the account. Silent no-op otherwise.
   useEffect(() => {
     if (isLlmConfigured()) return;
-    fetch("/api/llm-config")
-      .then((r) => (r.ok ? r.json() : null))
+    post<{ store?: { byProvider?: unknown } }>("/api/llm-config", undefined, "GET")
       .then((d) => {
         if (d?.store?.byProvider) {
-          importLlmStore(d.store);
+          importLlmStore(d.store as Parameters<typeof importLlmStore>[0]);
           setLlmSync(true);
           toast.success("Provider settings restored from your account");
         }
       })
-      .catch(() => {});
+      .catch(() => {}); // nothing synced yet is the normal case
   }, []);
 
   // "Configure provider" buttons elsewhere (LlmSetupNotice) open straight to the AI tab.
@@ -200,18 +200,13 @@ export function SettingsDialog() {
   async function fetchModels() {
     setFetching(true);
     try {
-      const res = await fetch("/api/models", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(cfg),
-      });
-      const { models: list } = await res.json();
-      const ids = (list ?? []).map((m: { id: string }) => m.id);
+      const { models: list } = await post<{ models?: { id: string }[] }>("/api/models", cfg);
+      const ids = (list ?? []).map((m) => m.id);
       setModels(ids);
       if (!ids.length) toast.error("No models returned — check the key / base URL.");
       else setModelOpen(true);
-    } catch {
-      toast.error("Couldn't fetch models");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't fetch models");
     } finally {
       setFetching(false);
     }
@@ -249,17 +244,11 @@ export function SettingsDialog() {
     setTtsPrefs({ engine, voiceURI: voiceURI || undefined, kokoroVoice, rate });
     // Sync (or un-sync) the encrypted provider store on the account.
     if (sync) {
-      const res = await fetch("/api/llm-config", {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ store: exportLlmStore() }),
-      });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        toast.error((d as { error?: string }).error ?? "Couldn't sync provider settings");
-      }
+      await post("/api/llm-config", { store: exportLlmStore() }, "PUT").catch((e: Error) =>
+        toast.error(e.message)
+      );
     } else if (getLlmSync()) {
-      await fetch("/api/llm-config", { method: "DELETE" }).catch(() => {});
+      await post("/api/llm-config", undefined, "DELETE").catch(() => {});
     }
     setLlmSync(sync);
     // Merge level into profiles.settings (read-modify-write; single-user edit).

@@ -30,7 +30,7 @@ import { Message, MessageContent } from "@/components/ui/message";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { AsciiSpinner } from "@/components/ascii-spinner";
-import { getLlm } from "@/lib/providers";
+import { post, postLlm, openStream } from "@/lib/api";
 import type { Flashcard, SessionReport } from "@/lib/schemas";
 import {
   KIND_LABEL,
@@ -93,13 +93,9 @@ export function InterviewReplay({
   async function generateTakeaways() {
     setGenerating(true);
     try {
-      const res = await fetch("/api/interview/cards", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ interviewId: id, llm: getLlm() }),
+      const data = await postLlm<{ cards: Flashcard[] }>("/api/interview/cards", {
+        interviewId: id,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Couldn't generate flashcards");
       setTakeaways(data.cards);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't generate flashcards");
@@ -126,21 +122,15 @@ export function InterviewReplay({
   async function retry() {
     setRetrying(true);
     try {
-      const res = await fetch("/api/interview", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          kind,
-          level: config.level,
-          targetMinutes: config.target_minutes,
-          company: config.company,
-          question,
-          code: config.code,
-          llm: getLlm(),
-        }),
+      const data = await postLlm<{ id: string }>("/api/interview", {
+        kind,
+        level: config.level,
+        targetMinutes: config.target_minutes,
+        company: config.company,
+        question,
+        topic: config.topic,
+        code: config.code,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Couldn't start the retry");
       router.push(`/interviews/${data.id}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Couldn't start the retry");
@@ -180,20 +170,15 @@ export function InterviewReplay({
   async function addCard(key: string, front: string, back: string) {
     setAddedCards((s) => new Set(s).add(key));
     try {
-      const res = await fetch("/api/card", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ front, back, source: "interview" }),
-      });
-      if (!res.ok) throw new Error();
+      await post("/api/card", { front, back, source: "interview" });
       toast.success("Flashcard added");
-    } catch {
+    } catch (e) {
       setAddedCards((s) => {
         const n = new Set(s);
         n.delete(key);
         return n;
       });
-      toast.error("Couldn't add flashcard");
+      toast.error(e instanceof Error ? e.message : "Couldn't add flashcard");
     }
   }
 
@@ -539,23 +524,11 @@ function DebriefChat({ interviewId }: { interviewId: string }) {
     setMessages(next);
     setStreaming(true);
     try {
-      const res = await fetch("/api/interview/debrief", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ interviewId, messages: next, llm: getLlm() }),
-      });
-      if (!res.ok || !res.body) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error((data as { error?: string }).error ?? "Debrief failed");
-      }
+      const stream = await openStream("/api/interview/debrief", { interviewId, messages: next });
       setMessages((m) => [...m, { role: "assistant", content: "" }]);
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
       let full = "";
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        full += decoder.decode(value, { stream: true });
+      for await (const chunk of stream) {
+        full += chunk;
         const snapshot = full;
         setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: snapshot }]);
       }

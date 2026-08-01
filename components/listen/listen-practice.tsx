@@ -10,7 +10,8 @@ import { Progress } from "@/components/ui/progress";
 import { AsciiSpinner } from "@/components/ascii-spinner";
 import { Kbd } from "@/components/ui/kbd";
 import { InlineDiff } from "@/components/writing/inline-diff";
-import { getLlm, isLlmConfigured } from "@/lib/providers";
+import { isLlmConfigured } from "@/lib/providers";
+import { post, postLlm } from "@/lib/api";
 import { createClient } from "@/lib/supabase/client";
 import { LlmSetupNotice } from "@/components/llm-setup-notice";
 import { scoreDictation, type DictationResult } from "@/lib/dictation";
@@ -45,13 +46,7 @@ export function ListenPractice() {
     setLoading(true);
     setLoadError(null);
     try {
-      const res = await fetch("/api/dictation", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ llm: getLlm() }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "failed");
+      const data = await postLlm<{ sentences?: string[] }>("/api/dictation");
       if (!data.sentences?.length) throw new Error("The model returned no sentences");
       setSentences(data.sentences);
       setIdx(0);
@@ -117,20 +112,15 @@ export function ListenPractice() {
     if (!result || !current) return;
     setAdded(true);
     try {
-      const res = await fetch("/api/card", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          front: `Listen: ${result.clozeFront}`,
-          back: current,
-          source: "manual",
-        }),
+      await post("/api/card", {
+        front: `Listen: ${result.clozeFront}`,
+        back: current,
+        source: "manual",
       });
-      if (!res.ok) throw new Error();
       toast.success("Flashcard added");
-    } catch {
+    } catch (e) {
       setAdded(false);
-      toast.error("Couldn't add flashcard");
+      toast.error(e instanceof Error ? e.message : "Couldn't add flashcard");
     }
   }
 

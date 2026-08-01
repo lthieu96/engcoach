@@ -30,7 +30,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Message, MessageContent } from "@/components/ui/message";
 import { AsciiSpinner } from "@/components/ascii-spinner";
-import { getLlm } from "@/lib/providers";
+import { postLlm, openStream } from "@/lib/api";
 import { KIND_LABEL, type InterviewKind } from "@/lib/interview";
 
 type Turn = { idx: number; role: "interviewer" | "candidate"; content: string };
@@ -86,24 +86,14 @@ export function InterviewSession({
     // inserts it before streaming) — only then is losing the draft acceptable.
     let persisted = false;
     try {
-      const res = await fetch("/api/interview/turn", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ interviewId: id, content, llm: getLlm() }),
-      });
-      if (!res.ok || !res.body) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error((data as { error?: string }).error ?? "Turn failed");
-      }
+      // Awaiting the open settles the request — past this line the server has
+      // the candidate's turn, so a later failure must not restore the draft.
+      const stream = await openStream("/api/interview/turn", { interviewId: id, content });
       persisted = true;
       setTurns((t) => [...t, { idx: nextIdx + 1, role: "interviewer", content: "" }]);
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
       let full = "";
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        full += decoder.decode(value, { stream: true });
+      for await (const chunk of stream) {
+        full += chunk;
         const snapshot = full;
         setTurns((t) => [...t.slice(0, -1), { idx: nextIdx + 1, role: "interviewer", content: snapshot }]);
       }
@@ -168,13 +158,9 @@ export function InterviewSession({
   async function finish() {
     setGrading(true);
     try {
-      const res = await fetch("/api/interview/finish", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ interviewId: id, llm: getLlm() }),
+      const data = await postLlm<{ abandoned?: boolean }>("/api/interview/finish", {
+        interviewId: id,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Couldn't grade the interview");
       if (data.abandoned) {
         toast.info("Interview discarded — you hadn't answered yet");
         router.replace("/interviews");

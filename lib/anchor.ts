@@ -18,6 +18,19 @@ function nthIndexOf(text: string, needle: string, occurrence: number): number {
   return -1;
 }
 
+const BOUNDARY = [".", "!", "?", "\n"];
+
+/**
+ * The sentence containing [start, end) — a flashcard needs the one sentence the
+ * mistake lives in, not the whole document (and not a fragment the LLM guessed at).
+ */
+export function sentenceAt(text: string, start: number, end: number): string {
+  const from = Math.max(...BOUNDARY.map((p) => text.lastIndexOf(p, Math.max(0, start - 1)))) + 1;
+  const ends = BOUNDARY.map((p) => text.indexOf(p, end)).filter((i) => i !== -1);
+  const to = ends.length ? Math.min(...ends) + 1 : text.length;
+  return text.slice(from, to).trim() || text.trim();
+}
+
 export function anchor(
   text: string,
   corrections: Correction[]

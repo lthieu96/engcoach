@@ -26,7 +26,8 @@ import { AsciiSpinner } from "@/components/ascii-spinner";
 import { speakText, cancelSpeech } from "@/lib/tts";
 import { Message, MessageContent } from "@/components/ui/message";
 import { SCENARIOS, type Scenario } from "@/lib/scenarios";
-import { getLlm, isLlmConfigured } from "@/lib/providers";
+import { isLlmConfigured } from "@/lib/providers";
+import { post, postLlm, openStream } from "@/lib/api";
 import { LlmSetupNotice } from "@/components/llm-setup-notice";
 import type { SessionReport } from "@/lib/schemas";
 
@@ -94,24 +95,16 @@ export function VoiceChat() {
       setPhase("thinking");
       setStreaming(true);
       try {
-        const res = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ messages: next, role: s.role, scenario: s.scenario, llm: getLlm() }),
+        const stream = await openStream("/api/chat", {
+          messages: next,
+          role: s.role,
+          scenario: s.scenario,
         });
-        if (!res.ok || !res.body) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error((data as { error?: string }).error ?? "Chat failed");
-        }
         setMessages((m) => [...m, { role: "assistant", content: "" }]);
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
         let full = "";
         let spoken = 0; // chars already queued to TTS
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          full += decoder.decode(value, { stream: true });
+        for await (const chunk of stream) {
+          full += chunk;
           const snapshot = full;
           setMessages((m) => [...m.slice(0, -1), { role: "assistant", content: snapshot }]);
           // Flush complete sentences (., !, ?, or newline) to the TTS queue —
@@ -197,19 +190,14 @@ export function VoiceChat() {
     }
     setPhase("thinking");
     try {
-      const res = await fetch("/api/report", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
+      setReport(
+        await postLlm<SessionReport>("/api/report", {
           messages: messages.filter((m) => m.content !== SEED),
           scenario: scenario?.scenario,
-          llm: getLlm(),
-        }),
-      });
-      if (!res.ok) throw new Error();
-      setReport(await res.json());
-    } catch {
-      toast.error("Couldn't build the report");
+        })
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't build the report");
     } finally {
       setPhase("idle");
     }
@@ -218,20 +206,15 @@ export function VoiceChat() {
   async function addCard(key: string, front: string, back: string) {
     setAddedCards((s) => new Set(s).add(key));
     try {
-      const res = await fetch("/api/card", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ front, back, source: "chat" }),
-      });
-      if (!res.ok) throw new Error();
+      await post("/api/card", { front, back, source: "chat" });
       toast.success("Flashcard added");
-    } catch {
+    } catch (e) {
       setAddedCards((s) => {
         const n = new Set(s);
         n.delete(key);
         return n;
       });
-      toast.error("Couldn't add flashcard");
+      toast.error(e instanceof Error ? e.message : "Couldn't add flashcard");
     }
   }
 

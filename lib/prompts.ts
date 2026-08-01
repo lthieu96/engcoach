@@ -51,10 +51,31 @@ Rules:
   make collocation, word form, preposition, article, plural, missing-"to be",
   and word-by-word-translation errors — watch for these specifically.
 - The target register is ${channel}: ${REGISTER_NOTE[channel]}.
-- natural_rewrite: rewrite the full text the way a native colleague would write
-  it in this channel — same meaning, same intent, natural tone.
+- Style preference is NOT an error. If a native colleague could plausibly write
+  the sentence as-is, leave it alone — do not flag synonyms, sentence order, or
+  "more concise" phrasings when the original is already correct and natural.
+- natural_rewrite: if the text is already correct and natural for this channel,
+  return it back VERBATIM — character for character, unchanged. Only produce a
+  different rewrite when there is a real problem to fix; then keep every change
+  traceable to a correction you listed above.
 - overall_comment: start with one thing done well, then the single most
-  important pattern to work on.`;
+  important pattern to work on.
+- vocabulary: 0-3 English words/phrases from YOUR natural_rewrite that this
+  learner did not use and would realistically need again at work — collocations,
+  phrasal verbs, and set phrases, not single easy nouns. Return an empty list if
+  the learner's own wording was already the natural one. meaning_vi is
+  Vietnamese only; example uses the term in this same work situation.`;
+}
+
+/** Fill in a term the learner highlighted themselves (they pick, we explain). */
+export function vocabFillSystem(level: Level): string {
+  return `A Vietnamese developer (${level} English) saved this English word or phrase while
+writing a workplace message. Fill in the card, following the schema.
+
+- term: the phrase in its normal dictionary form (drop inflection that came from
+  the sentence, keep it as a phrase if it is a collocation or phrasal verb).
+- meaning_vi: short, natural Vietnamese — Vietnamese only, no English gloss.
+- example: one short English sentence using the term in a software-team situation.`;
 }
 
 export function composeTaskSystem(
@@ -110,14 +131,19 @@ English attempt.
   same channel. Prefer phrasing that differs structurally from the user's
   attempt so they learn a new pattern.
 - If the attempt translates Vietnamese structure word-by-word, tag it
-  vietnamese_calque and show the natural English structure in the explanation.`;
+  vietnamese_calque and show the natural English structure in the explanation.
+- vocabulary: 0-3 English words/phrases from your natural_rewrite or alternatives
+  that the learner needed here but did not know — the phrasing that would have
+  made this translation easy. Empty list if they already had the words.`;
 }
 
 export const flashcardSystem = `Create one flashcard from this correction following the minimum information
 principle (one card = one fact).
 
-Front: the user's original sentence with the corrected span replaced by "____"
-       plus a short hint in parentheses, e.g. (preposition) or (collocation: make/do).
+Front: the WHOLE given sentence (never a fragment) with the corrected span
+       replaced by "____", plus a short hint in parentheses, e.g. (preposition)
+       or (collocation: make/do). If the sentence alone is ambiguous without the
+       situation, add the situation in one short line above it.
 Back:  the corrected span, then the full corrected sentence, then the
        explanation in one line.
 
@@ -159,22 +185,50 @@ const SENIORITY_GUIDE: Record<Seniority, string> = {
     "The bar is staff: expect the candidate to own the agenda, surface risks unprompted, and reason about trade-offs. Only interject to probe deeper or add constraints.",
 };
 
+const QUESTION_SHAPE: Record<InterviewKind, string> = {
+  system_design:
+    "A classic, well-scoped design prompt (a product or infrastructure system with real scale), stated the way an interviewer would open with it.",
+  dsa_walkthrough:
+    "One well-known algorithm/data-structure problem the candidate will EXPLAIN verbally (no code editor): the problem statement, stated plainly.",
+  tech_deep_dive:
+    `One open technical question that opens a discussion, not a quiz answer. It must
+  probe HOW something works or WHY a choice is made — never trivia, never "what
+  does this acronym stand for", never something answerable in one sentence. Good
+  shapes: "Walk me through what happens when …", "How would you debug …",
+  "When would you reach for X over Y, and what breaks if you get it wrong?"`,
+};
+
 export function interviewQuestionSystem(
   kind: InterviewKind,
   seniority: Seniority,
-  recentQuestions: string[]
+  recentQuestions: string[],
+  topic?: string
 ): string {
   return `Generate one ${KIND_LABEL[kind]} interview question for a ${seniority}-level
 software engineer interview at a top product company, following the schema.
 
-- ${
-    kind === "system_design"
-      ? "A classic, well-scoped design prompt (a product or infrastructure system with real scale), stated the way an interviewer would open with it."
-      : "One well-known algorithm/data-structure problem the candidate will EXPLAIN verbally (no code editor): the problem statement, stated plainly."
-  }
-- Calibrate scope to the ${seniority} bar.
+- ${QUESTION_SHAPE[kind]}
+${
+  topic
+    ? `- The question must be about: ${topic}. Stay on that topic — if it is broad, pick
+  ONE specific, interview-worthy angle within it rather than asking about all of it.
+`
+    : ""
+}- Calibrate scope to the ${seniority} bar.
 - Do not repeat these recent questions: ${recentQuestions.join(" | ") || "none"}.`;
 }
+
+// How the interviewer drives this kind of session, beyond the shared rules.
+const INTERVIEWER_NOTE: Record<InterviewKind, string> = {
+  system_design: "",
+  dsa_walkthrough: "",
+  tech_deep_dive: `- This is a knowledge deep dive, not a design or coding session. Keep asking
+  "and how does that actually work?" one level deeper until the candidate reaches
+  the edge of what they know, then move to another angle of the same topic.
+- At least once, ask for a concrete situation from their own work (what broke,
+  what they changed, what happened) — theory-only answers do not clear the bar.
+`,
+};
 
 export function interviewerSystem(
   kind: InterviewKind,
@@ -213,6 +267,7 @@ Rules:
 - ${SENIORITY_GUIDE[seniority]}
 - Push back at least once per phase: challenge a choice, add a constraint, or
   probe a failure mode (e.g. "What breaks first at 10x load?").
+${INTERVIEWER_NOTE[kind]}
 ${
   focus?.length
     ? `- In recent interviews this candidate scored below the bar on: ${focus.join(", ")}.

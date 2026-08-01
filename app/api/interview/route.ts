@@ -27,15 +27,20 @@ type Body = {
   targetMinutes: number;
   question?: string;
   company?: CompanyStyle;
+  topic?: string;
   code?: string;
   llm?: Partial<LlmConfig>;
 };
 
 export async function POST(req: Request) {
-  const { kind, level, targetMinutes, question: userQuestion, company, code, llm }: Body =
+  const { kind, level, targetMinutes, question: userQuestion, company, topic, code, llm }: Body =
     await req.json();
   if (!INTERVIEW_KINDS.includes(kind) || !SENIORITY.includes(level))
     return NextResponse.json({ error: "bad request" }, { status: 400 });
+  // A deep dive with no topic has nothing to dive into.
+  const cleanTopic = kind === "tech_deep_dive" ? topic?.trim().slice(0, 120) : undefined;
+  if (kind === "tech_deep_dive" && !cleanTopic && !userQuestion?.trim())
+    return NextResponse.json({ error: "pick a topic for the deep dive" }, { status: 400 });
 
   const supabase = await createClient();
   const {
@@ -62,7 +67,12 @@ export async function POST(req: Request) {
       const { object } = await generateObject({
         model: resolveModel(llm),
         schema: InterviewQuestion,
-        system: interviewQuestionSystem(kind, level, (recent ?? []).map((r) => r.question)),
+        system: interviewQuestionSystem(
+          kind,
+          level,
+          (recent ?? []).map((r) => r.question),
+          cleanTopic
+        ),
         prompt: "Generate one question now.",
       });
       question = object.question;
@@ -82,6 +92,7 @@ export async function POST(req: Request) {
         target_minutes: targetMinutes || 25,
         question_source: userQuestion ? "user" : "generated",
         company: COMPANY_STYLES.includes(company as CompanyStyle) ? company : "generic",
+        topic: cleanTopic || undefined,
         // Code walkthrough is a DSA-only flow (docs/04 Phase 3).
         code: kind === "dsa_walkthrough" ? code?.trim() || undefined : undefined,
         focus: focus.length ? focus : undefined,
@@ -92,7 +103,9 @@ export async function POST(req: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // Deterministic opener — no LLM call needed to say hello and read the question.
-  const opener = `Hi, thanks for joining! Today we'll do a ${KIND_LABEL[kind]} interview. Here's the question:
+  const opener = `Hi, thanks for joining! Today we'll do a ${KIND_LABEL[kind]} interview${
+    cleanTopic ? ` on ${cleanTopic}` : ""
+  }. Here's the question:
 
 ${question}
 

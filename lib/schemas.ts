@@ -15,10 +15,20 @@ export const Correction = z.object({
 });
 export type Correction = z.infer<typeof Correction>;
 
+// A word/phrase worth keeping, not a mistake — picked from the natural rewrite so
+// the learner banks the phrasing they didn't reach for themselves.
+export const VocabItem = z.object({
+  term: z.string().describe("the English word or phrase in its dictionary form"),
+  meaning_vi: z.string().describe("short Vietnamese meaning, no English"),
+  example: z.string().describe("one short English sentence using it in this work situation"),
+});
+export type VocabItem = z.infer<typeof VocabItem>;
+
 export const CorrectionResult = z.object({
   corrections: z.array(Correction),
   natural_rewrite: z.string(),
   overall_comment: z.string(),
+  vocabulary: z.array(VocabItem).max(4).describe("0-3 phrases worth learning, or empty"),
 });
 export type CorrectionResult = z.infer<typeof CorrectionResult>;
 

@@ -3,7 +3,7 @@
 // maxDuration 60: two sequential generateObject calls over the full transcript.
 import { generateObject } from "ai";
 import { NextResponse } from "next/server";
-import { resolveModel, llmError } from "@/lib/llm";
+import { resolveModel, llmError, GRADING } from "@/lib/llm";
 import { interviewEvaluationSchema, SessionReport } from "@/lib/schemas";
 import { interviewEvalSystem, sessionReportSystem } from "@/lib/prompts";
 import { getLevel } from "@/lib/profile";
@@ -65,6 +65,7 @@ export async function POST(req: Request) {
     const level = await getLevel(supabase, user.id);
     if (!evaluation) {
       const evalRes = await generateObject({
+        ...GRADING,
         model: resolveModel(llm),
         schema: interviewEvaluationSchema(kind, !!cfg.code),
         system: interviewEvalSystem(kind, interview.question, cfg.level, cfg.company, cfg.code),
@@ -78,6 +79,7 @@ export async function POST(req: Request) {
         .eq("status", "active");
     }
     const reportRes = await generateObject({
+      ...GRADING,
       model: resolveModel(llm),
       schema: SessionReport,
       system: sessionReportSystem(level),

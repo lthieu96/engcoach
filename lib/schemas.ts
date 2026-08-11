@@ -74,6 +74,19 @@ export const DictationBatch = z.object({
 });
 export type DictationBatch = z.infer<typeof DictationBatch>;
 
+export const GrammarDrillBatch = z.object({
+  items: z
+    .array(
+      z.object({
+        prompt: z.string().describe("one short workplace sentence containing one grammar error"),
+        answer: z.string().describe("the corrected sentence"),
+        explanation: z.string().describe("one short explanation of the correction"),
+      })
+    )
+    .length(3),
+});
+export type GrammarDrillBatch = z.infer<typeof GrammarDrillBatch>;
+
 export const InterviewQuestion = z.object({
   question: z
     .string()

@@ -97,3 +97,57 @@ export function topTags(
     .sort((a, b) => b.count - a.count)
     .slice(0, n);
 }
+
+type CorrectionExample = {
+  rule_tag: string;
+  original: string;
+  replacement: string;
+  explanation: string;
+  created_at: string;
+};
+
+/** Recurring grammar rules, with up to two distinct examples. */
+export function grammarPatterns(corrections: CorrectionExample[], n = 8) {
+  const groups = new Map<
+    string,
+    {
+      tag: string;
+      count: number;
+      explanation: string;
+      lastSeen: string;
+      examples: { original: string; replacement: string }[];
+    }
+  >();
+
+  for (const correction of corrections) {
+    const group = groups.get(correction.rule_tag) ?? {
+      tag: correction.rule_tag,
+      count: 0,
+      explanation: correction.explanation,
+      lastSeen: correction.created_at,
+      examples: [],
+    };
+    group.count += 1;
+    if (correction.created_at > group.lastSeen) {
+      group.explanation = correction.explanation;
+      group.lastSeen = correction.created_at;
+    }
+    if (
+      group.examples.length < 2 &&
+      !group.examples.some(
+        (example) =>
+          example.original === correction.original && example.replacement === correction.replacement
+      )
+    ) {
+      group.examples.push({
+        original: correction.original,
+        replacement: correction.replacement,
+      });
+    }
+    groups.set(correction.rule_tag, group);
+  }
+
+  return [...groups.values()]
+    .sort((a, b) => b.count - a.count || b.lastSeen.localeCompare(a.lastSeen))
+    .slice(0, n);
+}

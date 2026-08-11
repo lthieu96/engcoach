@@ -8,6 +8,7 @@ import {
   weekBucket,
   trendByCategory,
   topTags,
+  grammarPatterns,
 } from "../stats";
 
 test("heatLevel buckets", () => {
@@ -69,4 +70,43 @@ test("topTags ranks by count", () => {
   assert.equal(top[0].count, 2);
   assert.equal(top[0].category, "grammar");
   assert.equal(top[0].spark[5], 2);
+});
+
+test("grammarPatterns ranks recurring rules and keeps distinct examples", () => {
+  const rows = [
+    {
+      rule_tag: "article",
+      original: "I fixed bug",
+      replacement: "I fixed the bug",
+      explanation: "Use the article for a specific bug.",
+      created_at: "2026-07-10T00:00:00Z",
+    },
+    {
+      rule_tag: "article",
+      original: "I fixed bug",
+      replacement: "I fixed the bug",
+      explanation: "Duplicate example.",
+      created_at: "2026-07-11T00:00:00Z",
+    },
+    {
+      rule_tag: "article",
+      original: "Deploy is ready",
+      replacement: "The deploy is ready",
+      explanation: "Use the article for a specific deploy.",
+      created_at: "2026-07-12T00:00:00Z",
+    },
+    {
+      rule_tag: "preposition",
+      original: "discuss about it",
+      replacement: "discuss it",
+      explanation: "Discuss does not take about.",
+      created_at: "2026-07-13T00:00:00Z",
+    },
+  ];
+
+  const patterns = grammarPatterns(rows);
+  assert.equal(patterns[0].tag, "article");
+  assert.equal(patterns[0].count, 3);
+  assert.equal(patterns[0].explanation, "Use the article for a specific deploy.");
+  assert.equal(patterns[0].examples.length, 2);
 });

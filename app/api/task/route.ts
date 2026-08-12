@@ -1,18 +1,30 @@
 // POST /api/task — generate a Compose task or a Translate (VN) prompt (Spec §6).
 import { generateObject } from "ai";
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { resolveModel, llmError } from "@/lib/llm";
+import { LlmBody } from "@/lib/llm-body";
 import { ComposeTask, TranslateTask } from "@/lib/schemas";
 import { composeTaskSystem, translateTaskSystem } from "@/lib/prompts";
 import { getLearnerSettings } from "@/lib/profile";
 import { createClient } from "@/lib/supabase/server";
-import type { LlmConfig } from "@/lib/providers";
 
 export const maxDuration = 30;
 
+const Body = z.object({
+  mode: z.enum(["compose", "translate"]),
+  translateKind: z.enum(["workplace", "interview"]).optional(),
+  topic: z.string().trim().max(120).optional(),
+  llm: LlmBody,
+});
+
 export async function POST(req: Request) {
-  const { mode, llm }: { mode: "compose" | "translate"; llm?: Partial<LlmConfig> } =
-    await req.json();
+  const parsed = Body.safeParse(await req.json().catch(() => null));
+  if (!parsed.success)
+    return NextResponse.json({ error: "invalid request body" }, { status: 400 });
+  const { mode, translateKind, topic, llm } = parsed.data;
+  if (mode === "translate" && translateKind === "interview" && !topic)
+    return NextResponse.json({ error: "enter an interview topic" }, { status: 400 });
 
   const supabase = await createClient();
   const {
@@ -47,7 +59,13 @@ export async function POST(req: Request) {
       model: resolveModel(llm),
       schema: isTranslate ? TranslateTask : ComposeTask,
       system: isTranslate
-        ? translateTaskSystem(weakTags, recentScenarios, level, length)
+        ? translateTaskSystem(
+            weakTags,
+            recentScenarios,
+            level,
+            length,
+            translateKind === "interview" ? topic : undefined
+          )
         : composeTaskSystem(weakTags, recentScenarios, level, length),
       prompt: "Generate one task now.",
     });

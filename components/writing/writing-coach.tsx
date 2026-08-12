@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
 import { RefreshCw01 as RefreshCw, Send01 as Send } from "@untitledui/icons";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -23,6 +24,7 @@ import { CorrectionCard } from "./correction-card";
 import { toUICorrection, type SavedCorrection, type UICorrection } from "./types";
 
 type Mode = "compose" | "translate" | "paste";
+type TranslateKind = "workplace" | "interview";
 type Vocab = { term: string; meaning_vi: string; example: string };
 type Result = {
   documentId: string | null;
@@ -39,6 +41,8 @@ const FILTERS: (Category | "all")[] = ["all", "grammar", "clarity", "tone"];
 
 export function WritingCoach() {
   const [mode, setMode] = useState<Mode>("translate");
+  const [translateKind, setTranslateKind] = useState<TranslateKind>("workplace");
+  const [interviewTopic, setInterviewTopic] = useState("");
   const [channel, setChannel] = useState<Channel>("slack");
   const [task, setTask] = useState<Task | null>(null);
   const [text, setText] = useState("");
@@ -75,7 +79,7 @@ export function WritingCoach() {
     return auto;
   }, []);
 
-  const newTask = useCallback(async (m: Mode) => {
+  const newTask = useCallback(async (m: Mode, kind?: TranslateKind, topic?: string) => {
     if (m === "paste") {
       setTask(null);
       return;
@@ -83,7 +87,13 @@ export function WritingCoach() {
     setLoadingTask(true);
     setTaskError(null);
     try {
-      setTask(await postLlm<Task>("/api/task", { mode: m }));
+      setTask(
+        await postLlm<Task>("/api/task", {
+          mode: m,
+          translateKind: kind,
+          topic: kind === "interview" ? topic?.trim() : undefined,
+        })
+      );
     } catch (e) {
       setTaskError(e instanceof Error ? e.message : "Couldn't generate a task.");
     } finally {
@@ -91,13 +101,24 @@ export function WritingCoach() {
     }
   }, []);
 
+  function changeTranslateKind(kind: TranslateKind) {
+    setTranslateKind(kind);
+    setTask(null);
+    setText("");
+    setResult(null);
+    setCorrections([]);
+    setBaseline(null);
+  }
+
   function switchMode(m: Mode) {
     setMode(m);
     setResult(null);
     setCorrections([]);
     setBaseline(null);
     setText("");
-    if ((m === "compose" || m === "translate") && autoTask) newTask(m);
+    if (m === "compose" && autoTask) newTask(m);
+    else if (m === "translate" && autoTask && translateKind === "workplace")
+      newTask(m, translateKind);
     else setTask(null);
   }
 
@@ -311,6 +332,34 @@ export function WritingCoach() {
       {/* Task card */}
       {mode !== "paste" && (
         <Card className="gap-0 py-0">
+          {mode === "translate" && (
+            <div className="flex flex-wrap items-end gap-3 border-b px-4 py-3">
+              <label className="space-y-1 text-xs text-muted-foreground">
+                Practice
+                <NativeSelect
+                  value={translateKind}
+                  onChange={(e) => changeTranslateKind(e.target.value as TranslateKind)}
+                  size="sm"
+                  className="block"
+                >
+                  <NativeSelectOption value="workplace">Workplace message</NativeSelectOption>
+                  <NativeSelectOption value="interview">Interview answer</NativeSelectOption>
+                </NativeSelect>
+              </label>
+              {translateKind === "interview" && (
+                <label className="min-w-56 flex-1 space-y-1 text-xs text-muted-foreground">
+                  Topic
+                  <Input
+                    value={interviewTopic}
+                    onChange={(e) => setInterviewTopic(e.target.value)}
+                    placeholder="System Design, Node.js, PostgreSQL…"
+                    className="h-8"
+                    maxLength={120}
+                  />
+                </label>
+              )}
+            </div>
+          )}
           <CardContent className="flex items-start justify-between gap-4 px-4 py-4">
             <div className="min-w-0 text-sm">
               <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -328,12 +377,22 @@ export function WritingCoach() {
               ) : task ? (
                 <div className="space-y-2">
                   {mode === "translate" ? (
-                    <p className="text-base font-medium leading-relaxed">{task.vietnamese}</p>
+                    <>
+                      {task.channel === "interview" && task.context && (
+                        <p className="text-muted-foreground">
+                          <span className="font-medium text-foreground">Question:</span>{" "}
+                          {task.context}
+                        </p>
+                      )}
+                      <p className="text-base font-medium leading-relaxed">{task.vietnamese}</p>
+                    </>
                   ) : (
                     <p className="text-base leading-relaxed">{task.scenario}</p>
                   )}
                   {task.goal && <p className="text-muted-foreground">Goal: {task.goal}</p>}
-                  {task.context && <p className="text-muted-foreground">{task.context}</p>}
+                  {task.context && task.channel !== "interview" && (
+                    <p className="text-muted-foreground">{task.context}</p>
+                  )}
                   {!!task.constraints?.length && (
                     <div className="flex flex-wrap gap-1.5">
                       {task.constraints.map((c, i) => (
@@ -358,8 +417,11 @@ export function WritingCoach() {
               variant="ghost"
               size="sm"
               className="shrink-0 text-muted-foreground"
-              onClick={() => newTask(mode)}
-              disabled={loadingTask}
+              onClick={() => newTask(mode, translateKind, interviewTopic)}
+              disabled={
+                loadingTask ||
+                (mode === "translate" && translateKind === "interview" && !interviewTopic.trim())
+              }
             >
               <RefreshCw className={`size-3.5 ${loadingTask ? "animate-spin" : ""}`} />{" "}
               {taskError ? "Retry" : "New task"}

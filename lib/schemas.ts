@@ -1,6 +1,6 @@
 // Zod schemas for AI SDK generateObject (Spec §2).
 import { z } from "zod";
-import { RULE_TAGS, CHANNELS } from "./taxonomy";
+import { RULE_TAGS, CHANNELS, ALL_CHANNELS } from "./taxonomy";
 import { rubricFor, PHASES, type InterviewKind } from "./interview";
 
 // No `category` here: it's derived server-side from rule_tag (TAG_CATEGORY) so the
@@ -52,7 +52,7 @@ export type ComposeTask = z.infer<typeof ComposeTask>;
 // Vietnamese sentence for Translate mode
 export const TranslateTask = z.object({
   vietnamese: z.string(),
-  channel: z.enum(CHANNELS),
+  channel: z.enum(ALL_CHANNELS),
   context: z.string(),
 });
 export type TranslateTask = z.infer<typeof TranslateTask>;

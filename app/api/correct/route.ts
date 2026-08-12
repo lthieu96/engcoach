@@ -8,7 +8,7 @@ import { correctionSystem, translateGradeSystem } from "@/lib/prompts";
 import { getLevel } from "@/lib/profile";
 import { anchor } from "@/lib/anchor";
 import { createClient } from "@/lib/supabase/server";
-import { CHANNELS, TAG_CATEGORY } from "@/lib/taxonomy";
+import { ALL_CHANNELS, TAG_CATEGORY } from "@/lib/taxonomy";
 import { LlmBody } from "@/lib/llm-body";
 
 export const maxDuration = 30;
@@ -16,7 +16,7 @@ export const maxDuration = 30;
 // Validate BEFORE the LLM call — a bad body must not burn quota or hit CHECK constraints.
 const Body = z.object({
   text: z.string().trim().min(1).max(10_000),
-  channel: z.enum(CHANNELS),
+  channel: z.enum(ALL_CHANNELS),
   mode: z.enum(["compose", "translate", "paste"]),
   vietnamese: z.string().optional(),
   title: z.string().nullish(),

@@ -48,11 +48,13 @@ export const CATEGORY_LABEL: Record<Category, string> = {
 };
 
 export const CHANNELS = ["email", "slack", "pr_description", "pr_comment"] as const;
-export type Channel = (typeof CHANNELS)[number];
+export const ALL_CHANNELS = [...CHANNELS, "interview"] as const;
+export type Channel = (typeof ALL_CHANNELS)[number];
 
 export const REGISTER_NOTE: Record<Channel, string> = {
   email: "clear, polite, professional",
   slack: "friendly, concise, casual but respectful",
   pr_description: "precise, structured, neutral",
   pr_comment: "constructive, direct but kind",
+  interview: "spoken, structured, confident, and technically precise",
 };

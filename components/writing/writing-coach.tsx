@@ -276,7 +276,10 @@ export function WritingCoach() {
   );
   const shown = useMemo(() => visible.filter((c) => c.status !== "dismissed"), [visible]);
   const isInterviewPractice = mode === "translate" && translateKind === "interview";
-  const showTaskContent = !isInterviewPractice || Boolean(taskError || task);
+  const showTaskContent = !isInterviewPractice || Boolean(loadingTask || taskError || task);
+  const showInterviewEmptyState =
+    isInterviewPractice && !task && !loadingTask && !taskError;
+  const showEditor = !isInterviewPractice || Boolean(task);
   let editorPlaceholder = "Write here…";
   if (baseline && !result) editorPlaceholder = "Rewrite your message from memory…";
   else if (isInterviewPractice && !task)
@@ -332,7 +335,7 @@ export function WritingCoach() {
   }
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-4 p-4 md:p-6">
+    <div className="mx-auto flex max-w-4xl flex-col gap-4 p-4 md:p-6">
       {/* Header: title left, mode switch right */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="space-y-1">
@@ -352,27 +355,27 @@ export function WritingCoach() {
 
       {/* Task card */}
       {mode !== "paste" && (
-        <Card className="gap-0 overflow-hidden py-0">
+        <Card size="sm" className="gap-0 py-0">
           {mode === "translate" && (
-            <div
-              className={`grid gap-4 px-4 py-4 ${
-                isInterviewPractice ? "md:grid-cols-[11rem_minmax(0,1fr)]" : ""
-              }`}
-            >
-              <label className="space-y-1.5 text-xs font-medium text-foreground">
-                Practice type
-                <NativeSelect
-                  value={translateKind}
-                  onChange={(e) => changeTranslateKind(e.target.value as TranslateKind)}
-                  className="block w-full"
-                >
-                  <NativeSelectOption value="workplace">Workplace message</NativeSelectOption>
-                  <NativeSelectOption value="interview">Interview answer</NativeSelectOption>
-                </NativeSelect>
-              </label>
-              {isInterviewPractice && (
-                <div className="min-w-0 space-y-2.5">
-                  <div className="space-y-1.5">
+            <CardContent className="space-y-3.5 py-4">
+              <div
+                className={`grid gap-3 ${
+                  isInterviewPractice ? "md:grid-cols-[12rem_minmax(0,1fr)]" : ""
+                }`}
+              >
+                <label className="flex flex-col gap-1.5 text-xs font-medium text-foreground">
+                  <span>Practice type</span>
+                  <NativeSelect
+                    value={translateKind}
+                    onChange={(e) => changeTranslateKind(e.target.value as TranslateKind)}
+                    className="block w-full"
+                  >
+                    <NativeSelectOption value="workplace">Workplace message</NativeSelectOption>
+                    <NativeSelectOption value="interview">Interview answer</NativeSelectOption>
+                  </NativeSelect>
+                </label>
+                {isInterviewPractice && (
+                  <div className="min-w-0 space-y-1.5">
                     <label
                       htmlFor="interview-topic"
                       className="block text-xs font-medium text-foreground"
@@ -391,11 +394,9 @@ export function WritingCoach() {
                         }}
                         placeholder="e.g. Node.js event loop"
                         aria-describedby="interview-topic-help"
-                        className="h-10"
                         maxLength={120}
                       />
                       <Button
-                        size="lg"
                         className="w-full sm:w-auto"
                         onClick={() => newTask(mode, translateKind, interviewTopic)}
                         disabled={loadingTask || !interviewTopic.trim()}
@@ -404,18 +405,22 @@ export function WritingCoach() {
                         {loadingTask ? "Generating…" : taskError ? "Try again" : "Generate prompt"}
                       </Button>
                     </div>
-                    <p id="interview-topic-help" className="text-xs text-muted-foreground">
-                      Choose a topic or type your own.
-                    </p>
                   </div>
-                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                )}
+              </div>
+              {isInterviewPractice && (
+                <div className="flex flex-wrap items-center gap-1.5 border-t pt-3">
+                  <span id="interview-topic-help" className="mr-1 text-xs text-muted-foreground">
+                    Popular topics
+                  </span>
+                  <div className="flex flex-wrap gap-1.5">
                     {BACKEND_TOPIC_SUGGESTIONS.map((topic) => (
                       <button
                         key={topic.value}
                         type="button"
                         onClick={() => setInterviewTopic(topic.value)}
                         aria-pressed={interviewTopic === topic.value}
-                        className="h-9 whitespace-nowrap rounded-md border px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:translate-y-px aria-pressed:border-foreground/20 aria-pressed:bg-muted aria-pressed:text-foreground"
+                        className="h-7 whitespace-nowrap rounded-md border bg-background px-2.5 text-xs text-muted-foreground shadow-xs transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:translate-y-px aria-pressed:border-foreground/20 aria-pressed:bg-muted aria-pressed:text-foreground"
                       >
                         {topic.label}
                       </button>
@@ -423,12 +428,12 @@ export function WritingCoach() {
                   </div>
                 </div>
               )}
-            </div>
+            </CardContent>
           )}
           {showTaskContent && (
             <CardContent
-              className={`flex items-start justify-between gap-4 px-4 py-4 ${
-                mode === "translate" ? "border-t" : ""
+              className={`flex items-start justify-between gap-4 py-4 ${
+                mode === "translate" ? "border-t bg-muted/20" : ""
               }`}
             >
               <div className="min-w-0 text-sm">
@@ -516,47 +521,57 @@ export function WritingCoach() {
         </div>
       )}
 
-      {/* Editor — composer card: borderless textarea + action footer */}
-      <div className="rounded-xl border bg-card shadow-xs transition-colors focus-within:border-ring">
-        <Textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          disabled={isInterviewPractice && !task}
-          placeholder={editorPlaceholder}
-          className="min-h-44 resize-none rounded-none border-0 bg-transparent px-4 py-3 text-[17px] leading-[1.7] shadow-none focus-visible:border-transparent focus-visible:ring-0"
-        />
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2">
-          <div className="flex items-center gap-3">
-            {isInterviewPractice ? (
-              <span className="text-xs font-medium text-muted-foreground">Interview answer</span>
-            ) : (
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                Channel
-                <NativeSelect
-                  value={channel}
-                  onChange={(e) => setChannel(e.target.value as Channel)}
-                  size="sm"
-                >
-                  {CHANNELS.map((c) => (
-                    <NativeSelectOption key={c} value={c}>
-                      {c}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-              </label>
-            )}
-            <span className="text-xs tabular-nums text-muted-foreground">
-              {text.trim() ? text.trim().split(/\s+/).length : 0} words
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Kbd>⌘↵</Kbd>
-            <Button size="sm" onClick={check} disabled={checking || !text.trim()}>
-              <Send className="size-3.5" /> {checking ? "Checking…" : "Check"}
-            </Button>
+      {showInterviewEmptyState && (
+        <div className="flex min-h-28 flex-col items-center justify-center rounded-xl border border-dashed bg-muted/20 px-6 text-center">
+          <p className="text-sm font-medium">Generate a prompt to start</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Choose a backend topic above or enter your own.
+          </p>
+        </div>
+      )}
+
+      {showEditor && (
+        /* Editor — composer card: borderless textarea + action footer */
+        <div className="rounded-xl border bg-card shadow-xs transition-colors focus-within:border-ring">
+          <Textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={editorPlaceholder}
+            className="min-h-48 resize-none rounded-none border-0 bg-transparent px-4 py-3 text-[17px] leading-[1.7] shadow-none focus-visible:border-transparent focus-visible:ring-0"
+          />
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2">
+            <div className="flex items-center gap-3">
+              {isInterviewPractice ? (
+                <span className="text-xs font-medium text-muted-foreground">Interview answer</span>
+              ) : (
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  Channel
+                  <NativeSelect
+                    value={channel}
+                    onChange={(e) => setChannel(e.target.value as Channel)}
+                    size="sm"
+                  >
+                    {CHANNELS.map((c) => (
+                      <NativeSelectOption key={c} value={c}>
+                        {c}
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                </label>
+              )}
+              <span className="text-xs tabular-nums text-muted-foreground">
+                {text.trim() ? text.trim().split(/\s+/).length : 0} words
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Kbd>⌘↵</Kbd>
+              <Button size="sm" onClick={check} disabled={checking || !text.trim()}>
+                <Send className="size-3.5" /> {checking ? "Checking…" : "Check"}
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Check failed — inline, with the real reason and a retry */}
       {checkError && !checking && (

@@ -1,5 +1,7 @@
 "use client";
 
+/* Hallmark · pre-emit critique: P5 H5 E4 S5 R5 V4 */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
@@ -39,14 +41,14 @@ type Task = { scenario?: string; goal?: string; constraints?: string[]; channel?
 
 const FILTERS: (Category | "all")[] = ["all", "grammar", "clarity", "tone"];
 const BACKEND_TOPIC_SUGGESTIONS = [
-  "Node.js event loop",
-  "Streams & backpressure",
-  "NestJS dependency injection",
-  "REST API design",
-  "PostgreSQL indexing",
-  "Redis caching",
-  "Message queues & idempotency",
-  "Scaling Node.js services",
+  { label: "Event loop", value: "Node.js event loop" },
+  { label: "Streams", value: "Streams & backpressure" },
+  { label: "NestJS DI", value: "NestJS dependency injection" },
+  { label: "REST API", value: "REST API design" },
+  { label: "PostgreSQL", value: "PostgreSQL indexing" },
+  { label: "Redis", value: "Redis caching" },
+  { label: "Queues", value: "Message queues & idempotency" },
+  { label: "Scaling Node.js", value: "Scaling Node.js services" },
 ];
 
 export function WritingCoach() {
@@ -273,6 +275,15 @@ export function WritingCoach() {
     [corrections, filter]
   );
   const shown = useMemo(() => visible.filter((c) => c.status !== "dismissed"), [visible]);
+  const isInterviewPractice = mode === "translate" && translateKind === "interview";
+  const showTaskContent = !isInterviewPractice || Boolean(taskError || task);
+  let editorPlaceholder = "Write here…";
+  if (baseline && !result) editorPlaceholder = "Rewrite your message from memory…";
+  else if (isInterviewPractice && !task)
+    editorPlaceholder = "Generate an interview prompt first…";
+  else if (mode === "translate") editorPlaceholder = "Write your English version…";
+  else if (mode === "paste")
+    editorPlaceholder = "Paste your draft here… (or open /write?text=… from Raycast)";
 
   // Keyboard: ⌘/Ctrl+Enter = Check (works while typing); ↑/↓ move active,
   // Enter accept, Esc dismiss — only when focus is OUTSIDE the editor.
@@ -341,41 +352,72 @@ export function WritingCoach() {
 
       {/* Task card */}
       {mode !== "paste" && (
-        <Card className="gap-0 py-0">
+        <Card className="gap-0 overflow-hidden py-0">
           {mode === "translate" && (
-            <div className="flex flex-wrap items-end gap-3 border-b px-4 py-3">
-              <label className="space-y-1 text-xs text-muted-foreground">
-                Practice
+            <div
+              className={`grid gap-4 px-4 py-4 ${
+                isInterviewPractice ? "md:grid-cols-[11rem_minmax(0,1fr)]" : ""
+              }`}
+            >
+              <label className="space-y-1.5 text-xs font-medium text-foreground">
+                Practice type
                 <NativeSelect
                   value={translateKind}
                   onChange={(e) => changeTranslateKind(e.target.value as TranslateKind)}
-                  size="sm"
-                  className="block"
+                  className="block w-full"
                 >
                   <NativeSelectOption value="workplace">Workplace message</NativeSelectOption>
                   <NativeSelectOption value="interview">Interview answer</NativeSelectOption>
                 </NativeSelect>
               </label>
-              {translateKind === "interview" && (
-                <div className="min-w-56 flex-1 space-y-1.5 text-xs text-muted-foreground">
-                  <label htmlFor="interview-topic">Topic</label>
-                  <Input
-                    id="interview-topic"
-                    value={interviewTopic}
-                    onChange={(e) => setInterviewTopic(e.target.value)}
-                    placeholder="System Design, Node.js, PostgreSQL…"
-                    className="h-8"
-                    maxLength={120}
-                  />
-                  <div className="flex flex-wrap gap-1.5">
+              {isInterviewPractice && (
+                <div className="min-w-0 space-y-2.5">
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="interview-topic"
+                      className="block text-xs font-medium text-foreground"
+                    >
+                      Interview topic
+                    </label>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <Input
+                        id="interview-topic"
+                        value={interviewTopic}
+                        onChange={(e) => setInterviewTopic(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && interviewTopic.trim() && !loadingTask) {
+                            newTask(mode, translateKind, interviewTopic);
+                          }
+                        }}
+                        placeholder="e.g. Node.js event loop"
+                        aria-describedby="interview-topic-help"
+                        className="h-10"
+                        maxLength={120}
+                      />
+                      <Button
+                        size="lg"
+                        className="w-full sm:w-auto"
+                        onClick={() => newTask(mode, translateKind, interviewTopic)}
+                        disabled={loadingTask || !interviewTopic.trim()}
+                      >
+                        <RefreshCw className={`size-3.5 ${loadingTask ? "animate-spin" : ""}`} />
+                        {loadingTask ? "Generating…" : taskError ? "Try again" : "Generate prompt"}
+                      </Button>
+                    </div>
+                    <p id="interview-topic-help" className="text-xs text-muted-foreground">
+                      Choose a topic or type your own.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
                     {BACKEND_TOPIC_SUGGESTIONS.map((topic) => (
                       <button
-                        key={topic}
+                        key={topic.value}
                         type="button"
-                        onClick={() => setInterviewTopic(topic)}
-                        className="rounded-full border px-2.5 py-0.5 text-xs transition-colors hover:bg-muted hover:text-foreground"
+                        onClick={() => setInterviewTopic(topic.value)}
+                        aria-pressed={interviewTopic === topic.value}
+                        className="h-9 whitespace-nowrap rounded-md border px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring active:translate-y-px aria-pressed:border-foreground/20 aria-pressed:bg-muted aria-pressed:text-foreground"
                       >
-                        {topic}
+                        {topic.label}
                       </button>
                     ))}
                   </div>
@@ -383,73 +425,79 @@ export function WritingCoach() {
               )}
             </div>
           )}
-          <CardContent className="flex items-start justify-between gap-4 px-4 py-4">
-            <div className="min-w-0 text-sm">
-              <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                {mode === "translate" ? "Translate this" : "Your task"}
-              </div>
-              {loadingTask ? (
-                <div className="flex h-10 items-center">
-                  <AsciiSpinner label="Generating task…" className="text-muted-foreground" />
-                </div>
-              ) : taskError ? (
-                <div className="space-y-1">
-                  <p className="font-medium text-destructive">Couldn&apos;t generate a task</p>
-                  <p className="text-muted-foreground">{taskError}</p>
-                </div>
-              ) : task ? (
-                <div className="space-y-2">
-                  {mode === "translate" ? (
-                    <>
-                      {task.channel === "interview" && task.context && (
-                        <p className="text-muted-foreground">
-                          <span className="font-medium text-foreground">Question:</span>{" "}
-                          {task.context}
-                        </p>
-                      )}
-                      <p className="text-base font-medium leading-relaxed">{task.vietnamese}</p>
-                    </>
-                  ) : (
-                    <p className="text-base leading-relaxed">{task.scenario}</p>
-                  )}
-                  {task.goal && <p className="text-muted-foreground">Goal: {task.goal}</p>}
-                  {task.context && task.channel !== "interview" && (
-                    <p className="text-muted-foreground">{task.context}</p>
-                  )}
-                  {!!task.constraints?.length && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {task.constraints.map((c, i) => (
-                        <span
-                          key={i}
-                          className="rounded-full border bg-muted/50 px-2.5 py-0.5 text-xs text-muted-foreground"
-                        >
-                          {c}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <p className="text-muted-foreground">
-                  No task yet — hit <span className="font-medium text-foreground">New task</span>{" "}
-                  when you&apos;re ready.
-                </p>
-              )}
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="shrink-0 text-muted-foreground"
-              onClick={() => newTask(mode, translateKind, interviewTopic)}
-              disabled={
-                loadingTask ||
-                (mode === "translate" && translateKind === "interview" && !interviewTopic.trim())
-              }
+          {showTaskContent && (
+            <CardContent
+              className={`flex items-start justify-between gap-4 px-4 py-4 ${
+                mode === "translate" ? "border-t" : ""
+              }`}
             >
-              <RefreshCw className={`size-3.5 ${loadingTask ? "animate-spin" : ""}`} />{" "}
-              {taskError ? "Retry" : "New task"}
-            </Button>
-          </CardContent>
+              <div className="min-w-0 text-sm">
+                <div className="mb-1.5 text-xs font-medium text-muted-foreground">
+                  {isInterviewPractice
+                    ? "Translate the answer"
+                    : mode === "translate"
+                      ? "Translate this"
+                      : "Your task"}
+                </div>
+                {loadingTask ? (
+                  <div className="flex h-10 items-center">
+                    <AsciiSpinner label="Generating task…" className="text-muted-foreground" />
+                  </div>
+                ) : taskError ? (
+                  <div className="space-y-1">
+                    <p className="font-medium text-destructive">Couldn&apos;t generate a task</p>
+                    <p className="text-muted-foreground">{taskError}</p>
+                  </div>
+                ) : task ? (
+                  <div className="space-y-2">
+                    {mode === "translate" ? (
+                      <>
+                        {task.channel === "interview" && task.context && (
+                          <p className="text-muted-foreground">
+                            <span className="font-medium text-foreground">Question:</span>{" "}
+                            {task.context}
+                          </p>
+                        )}
+                        <p className="text-base font-medium leading-relaxed">{task.vietnamese}</p>
+                      </>
+                    ) : (
+                      <p className="text-base leading-relaxed">{task.scenario}</p>
+                    )}
+                    {task.goal && <p className="text-muted-foreground">Goal: {task.goal}</p>}
+                    {task.context && task.channel !== "interview" && (
+                      <p className="text-muted-foreground">{task.context}</p>
+                    )}
+                    {!!task.constraints?.length && (
+                      <div className="flex flex-wrap gap-1.5">
+                        {task.constraints.map((c, i) => (
+                          <span
+                            key={i}
+                            className="rounded-full border bg-muted/50 px-2.5 py-0.5 text-xs text-muted-foreground"
+                          >
+                            {c}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground">A new task will appear here.</p>
+                )}
+              </div>
+              {!isInterviewPractice && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="shrink-0 text-muted-foreground"
+                  onClick={() => newTask(mode, translateKind, interviewTopic)}
+                  disabled={loadingTask}
+                >
+                  <RefreshCw className={`size-3.5 ${loadingTask ? "animate-spin" : ""}`} />{" "}
+                  {taskError ? "Retry" : "New task"}
+                </Button>
+              )}
+            </CardContent>
+          )}
         </Card>
       )}
 
@@ -473,33 +521,30 @@ export function WritingCoach() {
         <Textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={
-            baseline && !result
-              ? "Rewrite your message from memory…"
-              : mode === "translate"
-                ? "Write your English version…"
-                : mode === "paste"
-                  ? "Paste your draft here… (or open /write?text=… from Raycast)"
-                  : "Write here…"
-          }
+          disabled={isInterviewPractice && !task}
+          placeholder={editorPlaceholder}
           className="min-h-44 resize-none rounded-none border-0 bg-transparent px-4 py-3 text-[17px] leading-[1.7] shadow-none focus-visible:border-transparent focus-visible:ring-0"
         />
         <div className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2">
           <div className="flex items-center gap-3">
-            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              Channel
-              <NativeSelect
-                value={channel}
-                onChange={(e) => setChannel(e.target.value as Channel)}
-                size="sm"
-              >
-                {CHANNELS.map((c) => (
-                  <NativeSelectOption key={c} value={c}>
-                    {c}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </label>
+            {isInterviewPractice ? (
+              <span className="text-xs font-medium text-muted-foreground">Interview answer</span>
+            ) : (
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                Channel
+                <NativeSelect
+                  value={channel}
+                  onChange={(e) => setChannel(e.target.value as Channel)}
+                  size="sm"
+                >
+                  {CHANNELS.map((c) => (
+                    <NativeSelectOption key={c} value={c}>
+                      {c}
+                    </NativeSelectOption>
+                  ))}
+                </NativeSelect>
+              </label>
+            )}
             <span className="text-xs tabular-nums text-muted-foreground">
               {text.trim() ? text.trim().split(/\s+/).length : 0} words
             </span>

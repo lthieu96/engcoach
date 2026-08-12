@@ -38,6 +38,16 @@ type Result = {
 type Task = { scenario?: string; goal?: string; constraints?: string[]; channel?: Channel; vietnamese?: string; context?: string };
 
 const FILTERS: (Category | "all")[] = ["all", "grammar", "clarity", "tone"];
+const BACKEND_TOPIC_SUGGESTIONS = [
+  "Node.js event loop",
+  "Streams & backpressure",
+  "NestJS dependency injection",
+  "REST API design",
+  "PostgreSQL indexing",
+  "Redis caching",
+  "Message queues & idempotency",
+  "Scaling Node.js services",
+];
 
 export function WritingCoach() {
   const [mode, setMode] = useState<Mode>("translate");
@@ -347,16 +357,29 @@ export function WritingCoach() {
                 </NativeSelect>
               </label>
               {translateKind === "interview" && (
-                <label className="min-w-56 flex-1 space-y-1 text-xs text-muted-foreground">
-                  Topic
+                <div className="min-w-56 flex-1 space-y-1.5 text-xs text-muted-foreground">
+                  <label htmlFor="interview-topic">Topic</label>
                   <Input
+                    id="interview-topic"
                     value={interviewTopic}
                     onChange={(e) => setInterviewTopic(e.target.value)}
                     placeholder="System Design, Node.js, PostgreSQL…"
                     className="h-8"
                     maxLength={120}
                   />
-                </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {BACKEND_TOPIC_SUGGESTIONS.map((topic) => (
+                      <button
+                        key={topic}
+                        type="button"
+                        onClick={() => setInterviewTopic(topic)}
+                        className="rounded-full border px-2.5 py-0.5 text-xs transition-colors hover:bg-muted hover:text-foreground"
+                      >
+                        {topic}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           )}

@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AsciiSpinner } from "@/components/ascii-spinner";
+import { useDelayedPending } from "@/hooks/use-delayed-pending";
 import { Kbd } from "@/components/ui/kbd";
 import { Empty, EmptyHeader, EmptyTitle, EmptyDescription, EmptyContent } from "@/components/ui/empty";
 import { openLlmSettings } from "@/components/llm-setup-notice";
@@ -68,6 +69,8 @@ export function ReviewSession() {
   const [typed, setTyped] = useState("");
   const [reviewed, setReviewed] = useState(0);
   const [passed, setPassed] = useState(0);
+  const showLoading = useDelayedPending(loading);
+  const showGenerating = useDelayedPending(generatingTag !== null);
 
   // Load the practice queue and both reference views together so tab switches are instant.
   const load = useCallback(async () => {
@@ -233,7 +236,7 @@ export function ReviewSession() {
   if (loading) {
     return (
       <div className="flex min-h-[70vh] items-center justify-center">
-        <AsciiSpinner label="Loading deck…" className="text-base text-muted-foreground" />
+        {showLoading && <AsciiSpinner label="Loading deck…" className="text-base text-muted-foreground" />}
       </div>
     );
   }
@@ -457,7 +460,8 @@ export function ReviewSession() {
                   onClick={() => startDrill(pattern)}
                   disabled={generatingTag !== null}
                 >
-                  {generatingTag === pattern.tag ? "Generating…" : "Practice this pattern"}
+                  {generatingTag === pattern.tag && showGenerating && <AsciiSpinner />}
+                  Practice this pattern
                 </Button>
               </article>
             ))}

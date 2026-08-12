@@ -30,6 +30,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Message, MessageContent } from "@/components/ui/message";
 import { AsciiSpinner } from "@/components/ascii-spinner";
+import { useDelayedPending } from "@/hooks/use-delayed-pending";
 import { postLlm, openStream } from "@/lib/api";
 import { KIND_LABEL, type InterviewKind } from "@/lib/interview";
 
@@ -57,6 +58,10 @@ export function InterviewSession({
   const [code, setCode] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const scrollRef = useRef<HTMLDivElement>(null);
+  const showGrading = useDelayedPending(grading);
+  const awaitingReply =
+    streaming && (turns.at(-1)?.role !== "interviewer" || !turns.at(-1)?.content);
+  const showReplyLoading = useDelayedPending(awaitingReply);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -79,6 +84,7 @@ export function InterviewSession({
   }
 
   async function sendContent(content: string) {
+    if (grading) return;
     const nextIdx = (turns.at(-1)?.idx ?? -1) + 1;
     setTurns((t) => [...t, { idx: nextIdx, role: "candidate", content }]);
     setStreaming(true);
@@ -119,7 +125,7 @@ export function InterviewSession({
   // interviewer reacts to it and it lands in the transcript/replay.
   async function submitCode() {
     const trimmed = code.trim();
-    if (!trimmed || streaming) return;
+    if (!trimmed || streaming || grading) return;
     setCodeOpen(false);
     const supabase = createClient();
     const { data, error } = await supabase
@@ -173,7 +179,7 @@ export function InterviewSession({
     }
   }
 
-  if (grading) {
+  if (grading && showGrading) {
     return (
       <div className="flex h-[calc(100dvh-3rem)] flex-col items-center justify-center gap-3 md:h-dvh">
         <AsciiSpinner className="text-2xl text-muted-foreground" />
@@ -223,7 +229,7 @@ export function InterviewSession({
                   className="font-mono text-xs"
                   autoFocus
                 />
-                <Button onClick={submitCode} disabled={streaming || !code.trim()}>
+                <Button onClick={submitCode} disabled={streaming || grading || !code.trim()}>
                   Submit code
                 </Button>
               </DialogContent>
@@ -253,7 +259,7 @@ export function InterviewSession({
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
-          <Button variant="outline" size="sm" onClick={finish} disabled={streaming}>
+          <Button variant="outline" size="sm" onClick={finish} disabled={streaming || grading}>
             End interview
           </Button>
         </span>
@@ -276,7 +282,10 @@ export function InterviewSession({
               </Bubble>
             </MessageContent>
           </Message>
-        ))}
+          ))}
+        {showReplyLoading && (
+          <AsciiSpinner label="Preparing the next question…" className="text-muted-foreground" />
+        )}
       </div>
 
       <div className="flex items-end gap-2">
@@ -293,9 +302,10 @@ export function InterviewSession({
           rows={2}
           className="min-h-0 flex-1 resize-none"
           autoFocus
+          disabled={grading}
         />
-        <Button onClick={send} disabled={streaming || !draft.trim()} size="icon" className="shrink-0">
-          {streaming ? <AsciiSpinner /> : <Send className="size-4" />}
+        <Button onClick={send} disabled={streaming || grading || !draft.trim()} size="icon" className="shrink-0">
+          <Send className="size-4" />
         </Button>
       </div>
       <p className="text-center text-xs text-muted-foreground">

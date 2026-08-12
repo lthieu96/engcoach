@@ -11,7 +11,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Skeleton } from "@/components/ui/skeleton";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Kbd } from "@/components/ui/kbd";
 import { createClient } from "@/lib/supabase/client";
@@ -19,6 +18,7 @@ import { isLlmConfigured } from "@/lib/providers";
 import { postLlm } from "@/lib/api";
 import { LlmSetupNotice } from "@/components/llm-setup-notice";
 import { AsciiSpinner } from "@/components/ascii-spinner";
+import { useDelayedPending } from "@/hooks/use-delayed-pending";
 import { CHANNELS, type Channel, type Category } from "@/lib/taxonomy";
 import { AnnotatedView } from "./annotated-view";
 import { InlineDiff } from "./inline-diff";
@@ -82,6 +82,8 @@ export function WritingCoach() {
   const checkedText = useRef(""); // text as it was when Check ran (anchors are relative to this)
   const wasConfigured = useRef(false);
   const [autoTask, setAutoTask] = useState(true);
+  const showTaskLoading = useDelayedPending(loadingTask);
+  const showChecking = useDelayedPending(checking);
 
   // profiles.settings.auto_task — whether tasks generate without being asked.
   const fetchAutoTask = useCallback(async (): Promise<boolean> => {
@@ -137,8 +139,6 @@ export function WritingCoach() {
   async function check() {
     if (!text.trim() || checking) return;
     setChecking(true);
-    setResult(null);
-    setCorrections([]);
     setCheckError(null);
     try {
       const data = await postLlm<Result>("/api/correct", {
@@ -150,6 +150,7 @@ export function WritingCoach() {
       });
       checkedText.current = text;
       setSelection("");
+      setActiveId(null);
       setResult(data);
       setCorrections(data.corrections.map(toUICorrection));
       setView("annotated");
@@ -276,9 +277,9 @@ export function WritingCoach() {
   );
   const shown = useMemo(() => visible.filter((c) => c.status !== "dismissed"), [visible]);
   const isInterviewPractice = mode === "translate" && translateKind === "interview";
-  const showTaskContent = !isInterviewPractice || Boolean(loadingTask || taskError || task);
+  const showTaskContent = !isInterviewPractice || Boolean(showTaskLoading || taskError || task);
   const showInterviewEmptyState =
-    isInterviewPractice && !task && !loadingTask && !taskError;
+    isInterviewPractice && !task && !showTaskLoading && !taskError;
   const showEditor = !isInterviewPractice || Boolean(task);
   let editorPlaceholder = "Write here…";
   if (baseline && !result) editorPlaceholder = "Rewrite your message from memory…";
@@ -400,9 +401,10 @@ export function WritingCoach() {
                         className="w-full sm:w-auto"
                         onClick={() => newTask(mode, translateKind, interviewTopic)}
                         disabled={loadingTask || !interviewTopic.trim()}
+                        aria-busy={showTaskLoading}
                       >
-                        <RefreshCw className={`size-3.5 ${loadingTask ? "animate-spin" : ""}`} />
-                        {loadingTask ? "Generating…" : taskError ? "Try again" : "Generate prompt"}
+                        {showTaskLoading ? <AsciiSpinner /> : <RefreshCw className="size-3.5" />}
+                        {taskError ? "Try again" : "Generate prompt"}
                       </Button>
                     </div>
                   </div>
@@ -444,7 +446,7 @@ export function WritingCoach() {
                       ? "Translate this"
                       : "Your task"}
                 </div>
-                {loadingTask ? (
+                {!task && showTaskLoading ? (
                   <div className="flex h-10 items-center">
                     <AsciiSpinner label="Generating task…" className="text-muted-foreground" />
                   </div>
@@ -496,8 +498,9 @@ export function WritingCoach() {
                   className="shrink-0 text-muted-foreground"
                   onClick={() => newTask(mode, translateKind, interviewTopic)}
                   disabled={loadingTask}
+                  aria-busy={showTaskLoading}
                 >
-                  <RefreshCw className={`size-3.5 ${loadingTask ? "animate-spin" : ""}`} />{" "}
+                  {showTaskLoading ? <AsciiSpinner /> : <RefreshCw className="size-3.5" />} {" "}
                   {taskError ? "Retry" : "New task"}
                 </Button>
               )}
@@ -565,8 +568,8 @@ export function WritingCoach() {
             </div>
             <div className="flex items-center gap-2">
               <Kbd>⌘↵</Kbd>
-              <Button size="sm" onClick={check} disabled={checking || !text.trim()}>
-                <Send className="size-3.5" /> {checking ? "Checking…" : "Check"}
+              <Button size="sm" onClick={check} disabled={checking || !text.trim()} aria-busy={showChecking}>
+                {showChecking ? <AsciiSpinner /> : <Send className="size-3.5" />} Check
               </Button>
             </div>
           </div>
@@ -587,21 +590,11 @@ export function WritingCoach() {
       )}
 
       {/* Results */}
-      {checking && (
-        <div className="space-y-3">
-          <AsciiSpinner label="Analyzing your writing…" className="text-muted-foreground" />
-          <div className="grid gap-4 md:grid-cols-[1fr_20rem]">
-            <Skeleton className="h-64 w-full" />
-            <div className="space-y-2">
-              <Skeleton className="h-9 w-full" />
-              <Skeleton className="h-24 w-full" />
-              <Skeleton className="h-24 w-full" />
-            </div>
-          </div>
-        </div>
+      {showChecking && (
+        <AsciiSpinner label="Analyzing your writing…" className="text-muted-foreground" />
       )}
       {result && (
-        <div className="space-y-3">
+        <div className={`space-y-3 ${checking ? "pointer-events-none opacity-60" : ""}`}>
           {/* Round-2 verdict: what happened to the round-1 issues */}
           {rewriteCmp && (
             <div className="space-y-1.5 rounded-xl border bg-card p-4 text-sm shadow-xs">
@@ -706,15 +699,20 @@ export function WritingCoach() {
 
           {/* Round 2 CTA — applying the feedback is where the learning happens */}
           {corrections.some((c) => c.status !== "dismissed") && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-muted/40 px-4 py-3 text-sm">
-              <p className="text-muted-foreground">
-                <span className="font-medium text-foreground">Lock it in:</span> rewrite the
-                message from memory, applying the corrections.
-              </p>
+            <section className="flex flex-wrap items-center justify-between gap-4 rounded-xl border bg-card p-4 shadow-xs">
+              <div className="space-y-1 text-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Recommended next step
+                </p>
+                <p className="font-medium">Rewrite from memory</p>
+                <p className="text-muted-foreground">
+                  Apply the corrections once without looking at the old draft.
+                </p>
+              </div>
               <Button variant="outline" size="sm" onClick={startRewrite}>
                 <RefreshCw className="size-3.5" /> {baseline ? "Rewrite again" : "Rewrite from memory"}
               </Button>
-            </div>
+            </section>
           )}
 
           <div className="grid gap-4 md:grid-cols-[1fr_20rem]">

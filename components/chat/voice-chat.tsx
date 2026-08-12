@@ -23,6 +23,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { AsciiSpinner } from "@/components/ascii-spinner";
+import { useDelayedPending } from "@/hooks/use-delayed-pending";
 import { speakText, cancelSpeech } from "@/lib/tts";
 import { Message, MessageContent } from "@/components/ui/message";
 import { SCENARIOS, type Scenario } from "@/lib/scenarios";
@@ -56,6 +57,7 @@ export function VoiceChat() {
   const [showTranscript, setShowTranscript] = useState(true);
   const [report, setReport] = useState<SessionReport | null>(null);
   const [addedCards, setAddedCards] = useState<Set<string>>(new Set());
+  const showThinking = useDelayedPending(phase === "thinking");
 
   const transcriptRef = useRef("");
   transcriptRef.current = transcript;
@@ -378,7 +380,7 @@ export function VoiceChat() {
 
       {/* Transcript */}
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto rounded-xl border bg-card p-4 shadow-xs">
-        {visible.length === 0 && phase === "thinking" && (
+        {visible.length === 0 && showThinking && (
           <AsciiSpinner label="Connecting…" className="text-muted-foreground" />
         )}
         {showTranscript ? (
@@ -420,7 +422,7 @@ export function VoiceChat() {
       <div className="flex flex-col items-center gap-2 pt-1">
         <div className="relative">
           {/* Pulse ring while active */}
-          {phase !== "idle" && (
+          {(phase === "listening" || phase === "speaking" || showThinking) && (
             <motion.span
               className="absolute inset-0 rounded-full"
               style={{
@@ -440,7 +442,7 @@ export function VoiceChat() {
             variant={listening ? "destructive" : "default"}
             className="relative h-16 w-16 rounded-full shadow-lg"
           >
-            {phase === "thinking" ? (
+            {showThinking ? (
               <AsciiSpinner className="text-2xl" />
             ) : listening ? (
               <Square className="size-6" />
@@ -450,8 +452,8 @@ export function VoiceChat() {
           </Button>
         </div>
         <span className="text-xs text-muted-foreground">
-          {phase === "thinking"
-            ? "Thinking…"
+          {showThinking
+            ? "Responding…"
             : phase === "speaking"
               ? "Speaking — tap mic to interrupt"
               : listening

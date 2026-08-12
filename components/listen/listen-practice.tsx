@@ -14,6 +14,7 @@ import { isLlmConfigured } from "@/lib/providers";
 import { post, postLlm } from "@/lib/api";
 import { createClient } from "@/lib/supabase/client";
 import { LlmSetupNotice } from "@/components/llm-setup-notice";
+import { useDelayedPending } from "@/hooks/use-delayed-pending";
 import { scoreDictation, type DictationResult } from "@/lib/dictation";
 import { speakText, cancelSpeech } from "@/lib/tts";
 
@@ -27,6 +28,7 @@ export function ListenPractice() {
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const supabase = useRef(createClient());
+  const showLoading = useDelayedPending(loading);
 
   // profiles.settings.auto_task — same switch as Write's auto-generated tasks.
   const fetchAutoTask = useCallback(async (): Promise<boolean> => {
@@ -144,14 +146,14 @@ export function ListenPractice() {
             Type exactly what you hear — punctuation and capitals don&apos;t count.
           </p>
         </div>
-        {!loading && current && (
+        {current && (
           <span className="rounded-full border px-2.5 py-0.5 text-xs tabular-nums text-muted-foreground">
             {idx + 1} / {sentences.length}
           </span>
         )}
       </div>
       <Progress
-        value={!loading && sentences.length ? (idx / sentences.length) * 100 : 0}
+        value={sentences.length ? (idx / sentences.length) * 100 : 0}
         className="h-1"
       />
 
@@ -167,21 +169,28 @@ export function ListenPractice() {
             Retry
           </Button>
         </div>
-      ) : loading ? (
-        <div className="flex min-h-56 items-center justify-center rounded-xl border bg-card shadow-xs">
-          <AsciiSpinner label="Generating sentences…" className="text-muted-foreground" />
-        </div>
       ) : !current ? (
-        // Auto-generate off: wait for the user to ask for a batch.
-        <div className="flex flex-col items-center gap-4 rounded-xl border bg-card p-8 text-center shadow-xs">
-          <span className="flex size-10 items-center justify-center rounded-lg border bg-background shadow-xs">
-            <Volume2 className="size-5" />
-          </span>
-          <p className="text-sm text-muted-foreground">
-            Five spoken workplace sentences, generated fresh each round.
-          </p>
-          <Button onClick={loadBatch}>Load sentences</Button>
-        </div>
+        loading ? (
+          <div
+            aria-busy="true"
+            className="flex min-h-56 items-center justify-center rounded-xl border bg-card shadow-xs"
+          >
+            {showLoading && (
+              <AsciiSpinner label="Generating sentences…" className="text-muted-foreground" />
+            )}
+          </div>
+        ) : (
+          // Auto-generate off: wait for the user to ask for a batch.
+          <div className="flex flex-col items-center gap-4 rounded-xl border bg-card p-8 text-center shadow-xs">
+            <span className="flex size-10 items-center justify-center rounded-lg border bg-background shadow-xs">
+              <Volume2 className="size-5" />
+            </span>
+            <p className="text-sm text-muted-foreground">
+              Five spoken workplace sentences, generated fresh each round.
+            </p>
+            <Button onClick={loadBatch}>Load sentences</Button>
+          </div>
+        )
       ) : (
         <>
           {/* Play */}
@@ -233,8 +242,8 @@ export function ListenPractice() {
                 </CardContent>
               </Card>
               <div className="flex gap-2">
-                <Button onClick={next} className="flex-1">
-                  Next <ArrowRight className="size-4" />
+                <Button onClick={next} className="flex-1" disabled={loading} aria-busy={showLoading}>
+                  {showLoading ? <AsciiSpinner /> : <ArrowRight className="size-4" />} Next
                 </Button>
                 {!result.correct && (
                   <Button variant="outline" onClick={addCard} disabled={added}>

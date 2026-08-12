@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link, { useLinkStatus } from "next/link";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -43,7 +43,6 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { Spinner } from "@/components/ui/spinner";
 
 // Two separate modules: English coaching (practice → flashcards → stats) and
 // mock interviews (its own history + score trends live under /interviews).
@@ -64,11 +63,6 @@ const GROUPS: { label: string; items: NavItem[] }[] = [
     items: [{ href: "/interviews", label: "Interviews", icon: Briefcase }],
   },
 ];
-
-function NavIcon({ children }: { children: React.ReactNode }) {
-  const { pending } = useLinkStatus();
-  return pending ? <Spinner className="size-4" /> : children;
-}
 
 export function AppSidebar({ dueCount, email }: { dueCount: number; email: string }) {
   const pathname = usePathname();
@@ -126,9 +120,7 @@ export function AppSidebar({ dueCount, email }: { dueCount: number; email: strin
                       isActive={pathname === href || pathname.startsWith(`${href}/`)}
                       render={<Link href={href} />}
                     >
-                      <NavIcon>
-                        <Icon />
-                      </NavIcon>
+                      <Icon />
                       <span>{label}</span>
                     </SidebarMenuButton>
                     {badge && dueCount > 0 && (

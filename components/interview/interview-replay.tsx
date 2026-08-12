@@ -30,6 +30,7 @@ import { Message, MessageContent } from "@/components/ui/message";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { AsciiSpinner } from "@/components/ascii-spinner";
+import { useDelayedPending } from "@/hooks/use-delayed-pending";
 import { post, postLlm, openStream } from "@/lib/api";
 import type { Flashcard, SessionReport } from "@/lib/schemas";
 import {
@@ -88,6 +89,7 @@ export function InterviewReplay({
   const [retrying, setRetrying] = useState(false);
   const [takeaways, setTakeaways] = useState<Flashcard[] | null>(null);
   const [generating, setGenerating] = useState(false);
+  const showGenerating = useDelayedPending(generating);
 
   // Technical knowledge cards from the interview — join the same FSRS deck.
   async function generateTakeaways() {
@@ -428,8 +430,10 @@ export function InterviewReplay({
                     className="h-7"
                     onClick={generateTakeaways}
                     disabled={generating}
+                    aria-busy={showGenerating}
                   >
-                    {generating ? "Generating…" : takeaways ? "Regenerate" : "Generate flashcards"}
+                    {showGenerating && <AsciiSpinner />}
+                    {takeaways ? "Regenerate" : "Generate flashcards"}
                   </Button>
                 </div>
                 {!takeaways && !generating && (
@@ -515,6 +519,9 @@ function DebriefChat({ interviewId }: { interviewId: string }) {
   const [messages, setMessages] = useState<{ role: "user" | "assistant"; content: string }[]>([]);
   const [draft, setDraft] = useState("");
   const [streaming, setStreaming] = useState(false);
+  const awaitingReply =
+    streaming && (messages.at(-1)?.role !== "assistant" || !messages.at(-1)?.content);
+  const showReplyLoading = useDelayedPending(awaitingReply);
 
   async function send() {
     const content = draft.trim();
@@ -561,6 +568,9 @@ function DebriefChat({ interviewId }: { interviewId: string }) {
             </MessageContent>
           </Message>
         ))}
+        {showReplyLoading && (
+          <AsciiSpinner label="Preparing an answer…" className="text-muted-foreground" />
+        )}
         <div className="flex items-end gap-2">
           <Textarea
             value={draft}
@@ -576,7 +586,7 @@ function DebriefChat({ interviewId }: { interviewId: string }) {
             className="min-h-0 flex-1 resize-none"
           />
           <Button onClick={send} disabled={streaming || !draft.trim()} size="icon" className="shrink-0">
-            {streaming ? <AsciiSpinner /> : <Send className="size-4" />}
+            <Send className="size-4" />
           </Button>
         </div>
       </CardContent>

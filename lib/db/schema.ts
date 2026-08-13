@@ -54,7 +54,7 @@ export const documents = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    check("documents_context_check", sql`${t.context} in ('email','slack','pr_description','pr_comment')`),
+    check("documents_context_check", sql`${t.context} in ('email','slack','pr_description','pr_comment','interview')`),
     check("documents_mode_check", sql`${t.mode} in ('compose','translate','paste')`),
     pgPolicy("documents_owner", owner(t.userId)),
   ]

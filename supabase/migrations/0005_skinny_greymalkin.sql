@@ -1,0 +1,2 @@
+ALTER TABLE "documents" DROP CONSTRAINT "documents_context_check";--> statement-breakpoint
+ALTER TABLE "documents" ADD CONSTRAINT "documents_context_check" CHECK ("documents"."context" in ('email','slack','pr_description','pr_comment','interview'));
